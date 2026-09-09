@@ -16,6 +16,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    await DataStore.syncFromSupabase();
     const user = DataStore.verifyUserCredentials(username, password);
     if (!user) {
       // Generic error — never reveal whether username or password was wrong

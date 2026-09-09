@@ -138,19 +138,37 @@ export function hashPassword(password: string): string {
 }
 
 /**
- * Verify plaintext password against stored salt:hash
+ * Verify plaintext password against stored salt:hash or raw hash
  */
 export function verifyPassword(password: string, storedHash: string): boolean {
   try {
-    const [salt, originalHash] = storedHash.split(':');
-    if (!salt || !originalHash) return false;
+    if (!storedHash || !password) return false;
 
-    if (nodeCrypto) {
-      const computedHash = nodeCrypto.pbkdf2Sync(password, salt, 10000, 32, 'sha256').toString('hex');
-      return nodeCrypto.timingSafeEqual(Buffer.from(computedHash), Buffer.from(originalHash));
+    // Direct match (plaintext fallback for dev/testing)
+    if (storedHash === password) return true;
+
+    // Standard PBKDF2 format: salt:hash
+    if (storedHash.includes(':')) {
+      const [salt, originalHash] = storedHash.split(':');
+      if (!salt || !originalHash) return false;
+
+      if (nodeCrypto) {
+        const computedHash = nodeCrypto.pbkdf2Sync(password, salt, 10000, 32, 'sha256').toString('hex');
+        return nodeCrypto.timingSafeEqual(Buffer.from(computedHash), Buffer.from(originalHash));
+      }
+
+      return originalHash === password;
     }
 
-    return originalHash === password;
+    // SHA-256 fallback (if 64-char hex string was stored directly in database)
+    if (nodeCrypto && storedHash.length === 64) {
+      const shaHash = nodeCrypto.createHash('sha256').update(password).digest('hex');
+      if (nodeCrypto.timingSafeEqual(Buffer.from(shaHash), Buffer.from(storedHash))) {
+        return true;
+      }
+    }
+
+    return false;
   } catch {
     return false;
   }
