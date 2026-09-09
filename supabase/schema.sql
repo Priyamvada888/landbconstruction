@@ -75,10 +75,11 @@ END $$;
 
 -- 3. TABLES
 
--- Profiles (linked to auth.users)
+-- Profiles (Staff accounts with username and password)
 CREATE TABLE IF NOT EXISTS public.profiles (
-    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-    email TEXT NOT NULL,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    username TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
     role user_role NOT NULL DEFAULT 'staff',
     full_name TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),

@@ -1,6 +1,4 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-# dependencies
+# Dependencies
 /node_modules
 /.pnp
 .pnp.*
@@ -10,32 +8,76 @@
 !.yarn/releases
 !.yarn/versions
 
-# testing
-/coverage
-
-# next.js
-/.next/
-/out/
-
-# production
+# Next.js & Build Outputs
+.next/
+/out
 /build
+/dist
+*.tsbuildinfo
+next-env.d.ts
 
-# misc
-.DS_Store
-*.pem
+# Production & Packaging
+*.tgz
+*.tar.gz
 
-# debug
+# Environment files
+.env
+.env*.local
+.env.development
+.env.test
+.env.production
+.env.staging
+# Allow committing example environment files
+!.env.example
+!.env.*.example
+
+# Supabase (Local dev artifacts)
+supabase/.temp/
+supabase/.branches/
+.supabase/
+
+# Vercel & Turbopack
+.vercel
+.turbo
+
+# Testing & Coverage
+/coverage
+.nyc_output
+
+# Debug & Logs
+logs
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.pnpm-debug.log*
+pnpm-debug.log*
+lerna-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# OS Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
 
-# vercel
-.vercel
+# IDEs and Code Editors
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*~
 
-# typescript
-*.tsbuildinfo
-next-env.d.ts
+# Secrets & Certificates
+*.pem
+*.key
+*.cert
+*.crt
