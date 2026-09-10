@@ -106,17 +106,17 @@ export function JobDetailClient({
   const getStatusBadge = (status: JobStatus) => {
     switch (status) {
       case 'In Progress':
-        return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+        return 'text-emerald-700 border-emerald-300';
       case 'Filled':
-        return 'bg-blue-50 text-blue-700 border-blue-200';
+        return 'text-blue-700 border-blue-300';
       case 'Draft':
-        return 'bg-amber-50 text-amber-700 border-amber-200';
+        return 'text-amber-700 border-amber-300';
       case 'Completed':
-        return 'bg-slate-100 text-slate-600 border-slate-200';
+        return 'text-slate-600 border-slate-300';
       case 'Cancelled':
-        return 'bg-rose-50 text-rose-700 border-rose-200';
+        return 'text-rose-700 border-rose-300';
       default:
-        return 'bg-slate-100 text-slate-700 border-slate-200';
+        return 'text-slate-700 border-slate-300';
     }
   };
 
@@ -342,7 +342,7 @@ export function JobDetailClient({
                         >
                           {cand.name}
                         </Link>
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-emerald-700 border border-emerald-300">
                           {cand.availability_status}
                         </span>
                       </div>

@@ -21,9 +21,17 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { Operator, Timesheet, Job, UserRole, AvailabilityStatus } from '@/types/database';
-import { archiveOperatorAction, restoreOperatorAction, deleteTimesheetAction } from '@/lib/actions';
+import {
+  archiveOperatorAction,
+  restoreOperatorAction,
+  deleteOperatorAction,
+  deleteTimesheetAction,
+} from '@/lib/actions';
 import { QuickLogHoursModal } from '@/components/QuickLogHoursModal';
+import { EditOperatorModal } from '@/components/EditOperatorModal';
+import { EditTimesheetModal } from '@/components/EditTimesheetModal';
 import { formatCurrency } from '@/lib/utils';
+import { useRouter } from 'next/navigation';
 
 interface OperatorDetailClientProps {
   operator: Operator;
@@ -44,6 +52,7 @@ export function OperatorDetailClient({
   hoursSummary,
   currentRole,
 }: OperatorDetailClientProps) {
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
   const handleArchive = () => {
@@ -56,6 +65,16 @@ export function OperatorDetailClient({
   const handleRestore = () => {
     startTransition(async () => {
       await restoreOperatorAction(operator.id);
+    });
+  };
+
+  const handleDeleteOperator = () => {
+    if (!confirm(`Are you sure you want to permanently delete operator "${operator.name}"? This action cannot be undone.`)) {
+      return;
+    }
+    startTransition(async () => {
+      await deleteOperatorAction(operator.id);
+      router.push('/operators');
     });
   };
 
@@ -123,11 +142,18 @@ export function OperatorDetailClient({
 
         {/* Action Controls */}
         <div className="flex flex-wrap items-center gap-2.5">
+          <EditOperatorModal
+            operator={operator}
+            currentRole={currentRole}
+            triggerLabel="Edit Details"
+            triggerClassName="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors shadow-sm"
+          />
+
           <QuickLogHoursModal
             operators={[operator]}
             jobs={allJobs}
             defaultOperatorId={operator.id}
-            triggerLabel="Log Hours for Operator"
+            triggerLabel="Log Hours"
             triggerClassName="touch-target inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-slate-800 transition-colors"
           />
 
@@ -144,12 +170,22 @@ export function OperatorDetailClient({
             <button
               onClick={handleArchive}
               disabled={isPending}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-50 text-rose-700 border border-rose-200 text-xs font-bold hover:bg-rose-100 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 text-amber-700 border border-amber-200 text-xs font-bold hover:bg-amber-100 transition-colors"
             >
               <Archive className="w-4 h-4" />
               <span>Archive</span>
             </button>
           )}
+
+          <button
+            onClick={handleDeleteOperator}
+            disabled={isPending}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-50 text-rose-700 border border-rose-200 text-xs font-bold hover:bg-rose-100 transition-colors"
+            title="Delete operator"
+          >
+            <Trash2 className="w-4 h-4" />
+            <span>Delete</span>
+          </button>
         </div>
       </div>
 
@@ -211,16 +247,16 @@ export function OperatorDetailClient({
                       </div>
 
                       {expired ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200 font-bold text-[10px]">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-rose-700 border border-rose-300 font-bold text-[10px]">
                           <AlertTriangle className="w-3 h-3" />
                           EXPIRED
                         </span>
                       ) : expiringSoon ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 font-bold text-[10px]">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-amber-700 border border-amber-300 font-bold text-[10px]">
                           EXPIRING SOON
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-[10px]">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-emerald-700 border border-emerald-300 font-bold text-[10px]">
                           VALID
                         </span>
                       )}
@@ -348,12 +384,20 @@ export function OperatorDetailClient({
                           <td className="px-4 py-3 font-bold text-emerald-600">{formatCurrency(gross)}</td>
                           <td className="px-4 py-3 text-slate-500 max-w-xs truncate">{ts.notes || '—'}</td>
                           <td className="px-4 py-3 text-right">
-                            <button
-                              onClick={() => handleDeleteTimesheet(ts.id)}
-                              className="p-1 rounded text-slate-400 hover:text-rose-600 transition-colors"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            <div className="flex items-center justify-end gap-1">
+                              <EditTimesheetModal
+                                timesheet={ts}
+                                operators={[operator]}
+                                jobs={allJobs}
+                              />
+                              <button
+                                onClick={() => handleDeleteTimesheet(ts.id)}
+                                className="p-1 rounded text-slate-400 hover:text-rose-600 transition-colors"
+                                title="Delete timesheet"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );

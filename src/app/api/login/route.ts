@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { DataStore } from '@/lib/store';
-import { signJwt, COOKIE_NAME } from '@/lib/jwt';
+import { signJwt, verifyPassword, COOKIE_NAME } from '@/lib/jwt';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { Profile } from '@/types/database';
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,8 +18,36 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await DataStore.syncFromSupabase();
-    const user = DataStore.verifyUserCredentials(username, password);
+    let user: Profile | null = null;
+
+    // 1. Direct Supabase authentication (single source of truth across all workers/reloads)
+    const supabase = getSupabaseAdmin();
+    if (supabase) {
+      try {
+        const { data: dbProfile } = await supabase
+          .from('profiles')
+          .select('*')
+          .ilike('username', username)
+          .maybeSingle();
+
+        if (dbProfile && dbProfile.password_hash) {
+          const isValid = verifyPassword(password, dbProfile.password_hash);
+          if (isValid) {
+            user = dbProfile as Profile;
+            DataStore.upsertProfile(user);
+          }
+        }
+      } catch (dbErr) {
+        console.warn('Supabase login check failed, falling back to store:', dbErr);
+      }
+    }
+
+    // 2. Fallback to in-memory store
+    if (!user) {
+      await DataStore.syncFromSupabase();
+      user = DataStore.verifyUserCredentials(username, password);
+    }
+
     if (!user) {
       // Generic error — never reveal whether username or password was wrong
       return NextResponse.json(

@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { DataStore, syncFromSupabase } from '@/lib/store';
 import { QuickAddJobModal } from '@/components/QuickAddJobModal';
-import { ChevronRight } from 'lucide-react';
+import { JobCardActions, JobRowActions } from '@/components/JobRowActions';
 import { JobStatus } from '@/types/database';
 
 export const revalidate = 0;
@@ -34,17 +34,17 @@ export default async function JobsListPage({
   const getStatusBadge = (status: JobStatus) => {
     switch (status) {
       case 'In Progress':
-        return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+        return 'text-emerald-700 border-emerald-300';
       case 'Filled':
-        return 'bg-blue-50 text-blue-700 border-blue-200';
+        return 'text-blue-700 border-blue-300';
       case 'Draft':
-        return 'bg-amber-50 text-amber-700 border-amber-200';
+        return 'text-amber-700 border-amber-300';
       case 'Completed':
-        return 'bg-slate-100 text-slate-600 border-slate-200';
+        return 'text-slate-600 border-slate-300';
       case 'Cancelled':
-        return 'bg-rose-50 text-rose-700 border-rose-200';
+        return 'text-rose-700 border-rose-300';
       default:
-        return 'bg-slate-100 text-slate-700 border-slate-200';
+        return 'text-slate-700 border-slate-300';
     }
   };
 
@@ -119,10 +119,9 @@ export default async function JobsListPage({
             const activeCount = (job.assignments || []).filter((a) => !a.unassigned_at).length;
             const isFilled = activeCount >= job.required_operator_count;
             return (
-              <Link
+              <div
                 key={job.id}
-                href={`/jobs/${job.id}`}
-                className="block rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm active:scale-[0.99] transition-all"
+                className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm"
               >
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <span className="text-xs font-semibold text-slate-700 bg-slate-100 border border-slate-200 px-2.5 py-0.5 rounded-md">
@@ -155,17 +154,15 @@ export default async function JobsListPage({
                   </span>
                 </div>
 
-                <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs">
+                <div className="mt-2 flex items-center justify-between text-xs">
                   <div>
                     <span className="font-bold text-slate-900">£{job.pay_rate.toFixed(2)}/hr</span>
                     <span className="text-slate-400 text-[11px] ml-1">pay</span>
                   </div>
-                  <div className="flex items-center gap-1 font-bold text-indigo-600 text-xs">
-                    <span>Manage</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </div>
                 </div>
-              </Link>
+
+                <JobCardActions job={job} />
+              </div>
             );
           })
         )}
@@ -261,13 +258,7 @@ export default async function JobsListPage({
                         </span>
                       </td>
                       <td className="px-4 py-4 text-right">
-                        <Link
-                          href={`/jobs/${job.id}`}
-                          className="inline-flex items-center gap-1 font-bold text-[#6366f1] hover:text-indigo-800 transition-colors"
-                        >
-                          <span>View</span>
-                          <ChevronRight className="w-4 h-4" />
-                        </Link>
+                        <JobRowActions job={job} />
                       </td>
                     </tr>
                   );

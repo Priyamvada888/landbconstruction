@@ -7,8 +7,13 @@ export default async function UsersPage() {
   await syncFromSupabase();
   const currentRole = DataStore.getSessionRole();
   const profiles = DataStore.getProfiles();
+  const passwordResetRequests = DataStore.getPasswordResetRequests();
 
   return (
-    <UserManagementClient profiles={profiles} currentRole={currentRole} />
+    <UserManagementClient
+      profiles={profiles}
+      passwordResetRequests={passwordResetRequests}
+      currentRole={currentRole}
+    />
   );
 }

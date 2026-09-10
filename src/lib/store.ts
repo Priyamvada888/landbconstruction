@@ -10,6 +10,7 @@ import {
   OperatorPayrollSummary,
   PayrollEntry,
   OperatorTicket,
+  PasswordResetRequest,
 } from '@/types/database';
 import { INITIAL_OPERATORS, INITIAL_JOBS, INITIAL_TIMESHEETS, INITIAL_PROFILES } from './mock-data';
 import { hashPassword, verifyPassword } from './jwt';
@@ -20,6 +21,7 @@ let operatorsStore: Operator[] = [...INITIAL_OPERATORS];
 let jobsStore: Job[] = [...INITIAL_JOBS];
 let timesheetsStore: Timesheet[] = [...INITIAL_TIMESHEETS];
 let profilesStore: Profile[] = [...INITIAL_PROFILES];
+let passwordResetRequestsStore: PasswordResetRequest[] = [];
 let currentSessionRole: UserRole = 'admin'; // default session role
 let isSyncedWithSupabase = false;
 
@@ -207,11 +209,57 @@ export const DataStore = {
     return newProfile;
   },
 
+  upsertProfile(profile: Profile): void {
+    const idx = profilesStore.findIndex(
+      (p) => p.id === profile.id || p.username.toLowerCase() === profile.username.toLowerCase()
+    );
+    if (idx >= 0) {
+      profilesStore[idx] = { ...profilesStore[idx], ...profile };
+    } else {
+      profilesStore.push(profile);
+    }
+  },
+
   resetUserPassword(userId: string, newPassword: string): boolean {
     const user = profilesStore.find((p) => p.id === userId);
     if (!user) return false;
     user.password_hash = hashPassword(newPassword);
     user.updated_at = new Date().toISOString();
+    return true;
+  },
+
+  updateProfile(id: string, updates: Partial<Profile> & { newPassword?: string }): Profile {
+    const idx = profilesStore.findIndex((p) => p.id === id);
+    if (idx === -1) throw new Error('User profile not found');
+
+    if (updates.username && updates.username.toLowerCase() !== profilesStore[idx].username.toLowerCase()) {
+      const existing = this.getProfileByUsername(updates.username);
+      if (existing && existing.id !== id) {
+        throw new Error(`Username "${updates.username}" is already in use.`);
+      }
+    }
+
+    const newHash = updates.newPassword ? hashPassword(updates.newPassword) : profilesStore[idx].password_hash;
+
+    profilesStore[idx] = {
+      ...profilesStore[idx],
+      ...updates,
+      password_hash: newHash,
+      updated_at: new Date().toISOString(),
+    };
+
+    return profilesStore[idx];
+  },
+
+  deleteProfile(id: string): boolean {
+    const idx = profilesStore.findIndex((p) => p.id === id);
+    if (idx === -1) return false;
+    // Check not deleting last admin
+    const admins = profilesStore.filter((p) => p.role === 'admin');
+    if (profilesStore[idx].role === 'admin' && admins.length <= 1) {
+      throw new Error('Cannot delete the only administrator account.');
+    }
+    profilesStore.splice(idx, 1);
     return true;
   },
 
@@ -269,6 +317,13 @@ export const DataStore = {
     return this.updateOperator(id, { is_archived: false });
   },
 
+  deleteOperator(id: string): boolean {
+    const idx = operatorsStore.findIndex((op) => op.id === id);
+    if (idx === -1) return false;
+    operatorsStore.splice(idx, 1);
+    return true;
+  },
+
   // JOBS
   getJobs(includeArchived = false): Job[] {
     return jobsStore.filter((j) => includeArchived || !j.is_archived);
@@ -323,6 +378,13 @@ export const DataStore = {
 
   archiveJob(id: string): Job {
     return this.updateJob(id, { is_archived: true });
+  },
+
+  deleteJob(id: string): boolean {
+    const idx = jobsStore.findIndex((j) => j.id === id);
+    if (idx === -1) return false;
+    jobsStore.splice(idx, 1);
+    return true;
   },
 
   // JOB ASSIGNMENTS & STATUS LIFECYCLE
@@ -482,10 +544,99 @@ export const DataStore = {
     return entry;
   },
 
+  updateTimesheet(id: string, data: {
+    operator_id?: string;
+    job_id?: string | null;
+    date?: string;
+    hours?: number;
+    notes?: string | null;
+  }): Timesheet {
+    const idx = timesheetsStore.findIndex((t) => t.id === id);
+    if (idx === -1) throw new Error('Timesheet entry not found');
+
+    const existing = timesheetsStore[idx];
+    const opId = data.operator_id || existing.operator_id;
+    const jId = data.job_id !== undefined ? data.job_id : existing.job_id;
+    const hours = data.hours !== undefined ? Number(data.hours) : existing.hours;
+    const date = data.date || existing.date;
+    const notes = data.notes !== undefined ? data.notes : existing.notes;
+
+    if (hours <= 0 || hours > 24) {
+      throw new Error('Hours must be between 0.25 and 24');
+    }
+
+    const op = operatorsStore.find((o) => o.id === opId);
+    if (!op) throw new Error('Operator not found');
+
+    let rate_applied = existing.rate_applied;
+    if (jId) {
+      const job = jobsStore.find((j) => j.id === jId);
+      if (job) rate_applied = Number(job.pay_rate);
+    } else {
+      rate_applied = Number(op.hourly_rate);
+    }
+
+    timesheetsStore[idx] = {
+      ...existing,
+      operator_id: opId,
+      job_id: jId || null,
+      date,
+      hours,
+      notes: notes || null,
+      rate_applied,
+      updated_at: new Date().toISOString(),
+    };
+
+    return timesheetsStore[idx];
+  },
+
   deleteTimesheet(id: string): boolean {
     const idx = timesheetsStore.findIndex((t) => t.id === id);
     if (idx === -1) return false;
     timesheetsStore.splice(idx, 1);
+    return true;
+  },
+
+  // PASSWORD RESET REQUESTS
+  getPasswordResetRequests(): PasswordResetRequest[] {
+    return [...passwordResetRequestsStore].sort(
+      (a, b) => new Date(b.requested_at).getTime() - new Date(a.requested_at).getTime()
+    );
+  },
+
+  createPasswordResetRequest(username: string, notes?: string): PasswordResetRequest {
+    const req: PasswordResetRequest = {
+      id: crypto.randomUUID(),
+      username: username.trim(),
+      status: 'pending',
+      requested_at: new Date().toISOString(),
+      notes: notes || null,
+    };
+    passwordResetRequestsStore.unshift(req);
+    return req;
+  },
+
+  resolvePasswordResetRequest(requestId: string, newPassword?: string): boolean {
+    const req = passwordResetRequestsStore.find((r) => r.id === requestId);
+    if (!req) return false;
+
+    if (newPassword) {
+      const user = this.getProfileByUsername(req.username);
+      if (user) {
+        this.resetUserPassword(user.id, newPassword);
+      }
+    }
+
+    req.status = 'resolved';
+    req.resolved_at = new Date().toISOString();
+    return true;
+  },
+
+  dismissPasswordResetRequest(requestId: string): boolean {
+    const req = passwordResetRequestsStore.find((r) => r.id === requestId);
+    if (!req) return false;
+    req.status = 'dismissed';
+    req.resolved_at = new Date().toISOString();
     return true;
   },
 

@@ -154,6 +154,7 @@ export function verifyPassword(password: string, storedHash: string): boolean {
 
       if (nodeCrypto) {
         const computedHash = nodeCrypto.pbkdf2Sync(password, salt, 10000, 32, 'sha256').toString('hex');
+        if (computedHash.length !== originalHash.length) return false;
         return nodeCrypto.timingSafeEqual(Buffer.from(computedHash), Buffer.from(originalHash));
       }
 
@@ -163,9 +164,8 @@ export function verifyPassword(password: string, storedHash: string): boolean {
     // SHA-256 fallback (if 64-char hex string was stored directly in database)
     if (nodeCrypto && storedHash.length === 64) {
       const shaHash = nodeCrypto.createHash('sha256').update(password).digest('hex');
-      if (nodeCrypto.timingSafeEqual(Buffer.from(shaHash), Buffer.from(storedHash))) {
-        return true;
-      }
+      if (shaHash.length !== storedHash.length) return false;
+      return nodeCrypto.timingSafeEqual(Buffer.from(shaHash), Buffer.from(storedHash));
     }
 
     return false;

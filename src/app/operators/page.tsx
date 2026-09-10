@@ -1,16 +1,13 @@
 import Link from 'next/link';
 import { DataStore, syncFromSupabase } from '@/lib/store';
 import { CreateOperatorModal } from '@/components/CreateOperatorModal';
+import { OperatorRowActions, OperatorCardActions } from '@/components/OperatorRowActions';
 import {
   Search,
-  Filter,
   ArrowUpDown,
-  MoreVertical,
   ChevronRight,
-  ShieldCheck,
-  Check,
 } from 'lucide-react';
-import { AvailabilityStatus, OperatorRole } from '@/types/database';
+import { AvailabilityStatus } from '@/types/database';
 
 export const revalidate = 0;
 
@@ -45,17 +42,17 @@ export default async function OperatorsPage({
   const getStatusBadge = (status: AvailabilityStatus) => {
     switch (status) {
       case 'Available':
-        return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+        return 'text-emerald-700 border-emerald-300';
       case 'Working':
-        return 'bg-blue-50 text-blue-700 border-blue-200';
+        return 'text-blue-700 border-blue-300';
       case 'Starting Soon':
-        return 'bg-amber-50 text-amber-700 border-amber-200';
+        return 'text-amber-700 border-amber-300';
       case 'On Leave':
-        return 'bg-slate-100 text-slate-600 border-slate-200';
+        return 'text-slate-600 border-slate-300';
       case 'Do Not Use':
-        return 'bg-rose-50 text-rose-700 border-rose-200';
+        return 'text-rose-700 border-rose-300';
       default:
-        return 'bg-slate-100 text-slate-700 border-slate-200';
+        return 'text-slate-700 border-slate-300';
     }
   };
 
@@ -135,10 +132,9 @@ export default async function OperatorsPage({
         ) : (
           filtered.map((op) => {
             return (
-              <Link
+              <div
                 key={op.id}
-                href={`/operators/${op.id}`}
-                className="block rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm active:scale-[0.99] transition-all"
+                className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
@@ -161,14 +157,12 @@ export default async function OperatorsPage({
                   </span>
                 </div>
 
-                <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
+                <div className="flex items-center justify-between text-xs text-slate-400 mt-2">
                   <span>Pay: £{Number(op.hourly_rate ?? 0).toFixed(2)}/hr</span>
-                  <div className="flex items-center gap-1 font-bold text-slate-900 text-xs">
-                    <span>View Profile</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </div>
                 </div>
-              </Link>
+
+                <OperatorCardActions operator={op} currentRole={currentRole} />
+              </div>
             );
           })
         )}
@@ -270,13 +264,7 @@ export default async function OperatorsPage({
                         </span>
                       </td>
                       <td className="px-4 py-4 text-right">
-                        <Link
-                          href={`/operators/${op.id}`}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors inline-block"
-                          title="View Profile"
-                        >
-                          <MoreVertical className="w-4 h-4" />
-                        </Link>
+                        <OperatorRowActions operator={op} currentRole={currentRole} />
                       </td>
                     </tr>
                   );

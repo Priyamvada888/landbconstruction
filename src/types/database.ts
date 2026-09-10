@@ -52,6 +52,15 @@ export interface Profile {
   updated_at?: string;
 }
 
+export interface PasswordResetRequest {
+  id: string;
+  username: string;
+  status: 'pending' | 'resolved' | 'dismissed';
+  requested_at: string;
+  resolved_at?: string | null;
+  notes?: string | null;
+}
+
 export interface OperatorTicket {
   id: string;
   operator_id: string;

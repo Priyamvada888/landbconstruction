@@ -120,7 +120,7 @@ export function QuickAddJobModal() {
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
                   Role & Headcount
                 </p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                       Site Postcode
@@ -131,23 +131,6 @@ export function QuickAddJobModal() {
                       placeholder="e.g. M28 2LY"
                       className="w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:border-slate-900 focus:bg-white focus:outline-none transition-colors"
                     />
-                  </div>
-                  <div className="min-w-0">
-                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                      Required Role *
-                    </label>
-                    <select
-                      name="required_role"
-                      required
-                      defaultValue="Excavator Operator"
-                      className="w-full max-w-full truncate min-w-0 rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2 text-xs text-slate-900 focus:border-slate-900 focus:bg-white focus:outline-none transition-colors"
-                    >
-                      {OPERATOR_ROLES.map((role) => (
-                        <option key={role} value={role}>
-                          {role}
-                        </option>
-                      ))}
-                    </select>
                   </div>
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-700 mb-1">
@@ -163,7 +146,27 @@ export function QuickAddJobModal() {
                     />
                   </div>
                 </div>
+
+                <div className="mt-3">
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                    Required Operator Role *
+                  </label>
+                  <select
+                    name="required_role"
+                    required
+                    defaultValue=""
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2.5 text-xs text-slate-900 focus:border-slate-900 focus:bg-white focus:outline-none transition-colors"
+                  >
+                    <option value="" disabled>— Select a role —</option>
+                    {OPERATOR_ROLES.map((role) => (
+                      <option key={role} value={role}>
+                        {role}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
+
 
               {/* Commercial Terms & Rates */}
               <div>

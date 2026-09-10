@@ -27,13 +27,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserInfo | null>(null);
 
   useEffect(() => {
-    // Fetch current user info from the server
-    fetch('/api/me')
-      .then((r) => r.json())
-      .then((data) => {
-        if (data?.username) setUser(data);
-      })
-      .catch(() => null);
+    const fetchUser = () => {
+      fetch('/api/me')
+        .then((r) => r.json())
+        .then((data) => {
+          if (data?.username) setUser(data);
+        })
+        .catch(() => null);
+    };
+
+    fetchUser();
+
+    const handleProfileUpdate = () => {
+      fetchUser();
+    };
+
+    window.addEventListener('user-profile-updated', handleProfileUpdate);
+    window.addEventListener('focus', handleProfileUpdate);
+
+    return () => {
+      window.removeEventListener('user-profile-updated', handleProfileUpdate);
+      window.removeEventListener('focus', handleProfileUpdate);
+    };
   }, [pathname]);
 
   // If on login or public auth page, render without the app shell frame

@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Timesheet, Operator, Job } from '@/types/database';
 import { deleteTimesheetAction } from '@/lib/actions';
-import { Trash2, Search, Filter, HardHat, Building2, Calendar } from 'lucide-react';
+import { EditTimesheetModal } from './EditTimesheetModal';
+import { Trash2, Edit, HardHat, Building2 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 
 interface TimesheetsTableClientProps {
@@ -41,8 +42,12 @@ export function TimesheetsTableClient({
     if (!confirm('Are you sure you want to delete this timesheet entry?')) return;
     startTransition(async () => {
       await deleteTimesheetAction(id);
+      router.refresh();
     });
   };
+
+  // Track which timesheet is being edited
+  const [editingTs, setEditingTs] = useState<Timesheet | null>(null);
 
   return (
     <div className="space-y-4">
@@ -123,7 +128,7 @@ export function TimesheetsTableClient({
                     </span>
                   </div>
 
-                  <span className="font-bold text-sm text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-lg border border-emerald-100">
+                  <span className="font-bold text-sm text-emerald-700 px-2.5 py-0.5 rounded-lg border border-emerald-300">
                     {formatCurrency(gross)}
                   </span>
                 </div>
@@ -151,7 +156,15 @@ export function TimesheetsTableClient({
                   <p className="text-[11px] text-slate-500 italic px-1">{ts.notes}</p>
                 )}
 
-                <div className="pt-2 border-t border-slate-100 flex items-center justify-end">
+                <div className="pt-2 border-t border-slate-100 flex items-center justify-end gap-2">
+                  <button
+                    onClick={() => setEditingTs(ts)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors flex items-center gap-1 text-xs"
+                    title="Edit timesheet"
+                  >
+                    <Edit className="w-3.5 h-3.5" />
+                    <span>Edit</span>
+                  </button>
                   <button
                     onClick={() => handleDelete(ts.id)}
                     disabled={isPending}
@@ -232,14 +245,23 @@ export function TimesheetsTableClient({
                       </td>
                       <td className="px-4 py-3.5 text-slate-500 max-w-xs truncate">{ts.notes || '—'}</td>
                       <td className="px-4 py-3.5 text-right">
-                        <button
-                          onClick={() => handleDelete(ts.id)}
-                          disabled={isPending}
-                          className="p-1 rounded text-slate-400 hover:text-rose-600 transition-colors"
-                          title="Delete timesheet"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => setEditingTs(ts)}
+                            className="p-1 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                            title="Edit timesheet"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(ts.id)}
+                            disabled={isPending}
+                            className="p-1 rounded text-slate-400 hover:text-rose-600 transition-colors"
+                            title="Delete timesheet"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -249,6 +271,21 @@ export function TimesheetsTableClient({
           </table>
         </div>
       </div>
+
+      {/* Edit Timesheet Modal */}
+      {editingTs && (
+        <EditTimesheetModal
+          timesheet={editingTs}
+          operators={operators}
+          jobs={jobs}
+          isOpen={true}
+          onClose={() => setEditingTs(null)}
+          onSuccess={() => {
+            setEditingTs(null);
+            router.refresh();
+          }}
+        />
+      )}
     </div>
   );
 }

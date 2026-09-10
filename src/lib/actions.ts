@@ -1,9 +1,10 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { cookies } from 'next/headers';
 import { DataStore } from './store';
-import { JobStatus, OperatorRole, AvailabilityStatus, TicketType, UserRole } from '@/types/database';
-import { hashPassword } from './jwt';
+import { JobStatus, OperatorRole, AvailabilityStatus, TicketType, UserRole, Job, Profile } from '@/types/database';
+import { hashPassword, signJwt, verifyJwt, COOKIE_NAME } from './jwt';
 import { getSupabaseAdmin } from './supabase/admin';
 
 export async function checkAdminPermission() {
@@ -111,6 +112,78 @@ export async function updateJobStatusAction(jobId: string, status: JobStatus) {
   revalidatePath('/jobs');
   revalidatePath(`/jobs/${jobId}`);
   return { success: true, job: updated };
+}
+
+export async function updateJobAction(id: string, formData: FormData) {
+  const client = formData.get('client')?.toString().trim();
+  const site_name = formData.get('site_name')?.toString().trim();
+  const postcode = formData.get('postcode')?.toString().trim() || null;
+  const start_date = formData.get('start_date')?.toString();
+  const end_date = formData.get('end_date')?.toString() || null;
+  const required_operator_count = parseInt(formData.get('required_operator_count')?.toString() || '1', 10);
+  const required_role = formData.get('required_role')?.toString() as OperatorRole;
+  const pay_rate = parseFloat(formData.get('pay_rate')?.toString() || '0');
+  const charge_rate = parseFloat(formData.get('charge_rate')?.toString() || '0');
+  const site_contact_name = formData.get('site_contact_name')?.toString().trim() || null;
+  const site_contact_phone = formData.get('site_contact_phone')?.toString().trim() || null;
+  const notes = formData.get('notes')?.toString().trim() || null;
+  const status = formData.get('status')?.toString() as JobStatus | undefined;
+
+  if (!client || !site_name || !required_role) {
+    throw new Error('Client name, site name, and required role are required.');
+  }
+
+  if (pay_rate < 0 || charge_rate < 0) {
+    throw new Error('Pay rate and charge rate cannot be negative.');
+  }
+
+  if (required_operator_count <= 0) {
+    throw new Error('Required operator count must be at least 1.');
+  }
+
+  const updates: Partial<Job> = {
+    client,
+    site_name,
+    postcode,
+    required_operator_count,
+    required_role,
+    pay_rate,
+    charge_rate,
+    site_contact_name,
+    site_contact_phone,
+    notes,
+  };
+
+  if (start_date) updates.start_date = start_date;
+  if (end_date !== undefined) updates.end_date = end_date;
+  if (status) updates.status = status;
+
+  const supabase = getSupabaseAdmin();
+  if (supabase) {
+    const { error: dbErr } = await supabase.from('jobs').update(updates).eq('id', id);
+    if (dbErr) console.error('Supabase job update error:', dbErr);
+  }
+
+  const updated = DataStore.updateJob(id, updates);
+  revalidatePath('/dashboard');
+  revalidatePath('/jobs');
+  revalidatePath(`/jobs/${id}`);
+  return { success: true, job: updated };
+}
+
+export async function deleteJobAction(id: string) {
+  const supabase = getSupabaseAdmin();
+  if (supabase) {
+    await supabase.from('job_assignments').delete().eq('job_id', id);
+    await supabase.from('jobs').delete().eq('id', id);
+  }
+
+  const ok = DataStore.deleteJob(id);
+  if (!ok) throw new Error('Job not found or already removed');
+
+  revalidatePath('/dashboard');
+  revalidatePath('/jobs');
+  return { success: true };
 }
 
 export async function assignOperatorAction(jobId: string, operatorId: string) {
@@ -335,6 +408,22 @@ export async function restoreOperatorAction(id: string) {
   return { success: true, operator: restored };
 }
 
+export async function deleteOperatorAction(id: string) {
+  const supabase = getSupabaseAdmin();
+  if (supabase) {
+    await supabase.from('operator_tickets').delete().eq('operator_id', id);
+    await supabase.from('job_assignments').delete().eq('operator_id', id);
+    await supabase.from('operators').delete().eq('id', id);
+  }
+
+  const ok = DataStore.deleteOperator(id);
+  if (!ok) throw new Error('Operator not found or already removed');
+
+  revalidatePath('/operators');
+  revalidatePath('/dashboard');
+  return { success: true };
+}
+
 // TIMESHEETS ACTIONS
 export async function logTimesheetAction(formData: FormData) {
   const operator_id = formData.get('operator_id')?.toString();
@@ -396,11 +485,53 @@ export async function deleteTimesheetAction(id: string) {
   return { success };
 }
 
+export async function updateTimesheetAction(id: string, formData: FormData) {
+  const operator_id = formData.get('operator_id')?.toString();
+  const job_id = formData.get('job_id')?.toString() || null;
+  const date = formData.get('date')?.toString() || new Date().toISOString().split('T')[0];
+  const hours = parseFloat(formData.get('hours')?.toString() || '0');
+  const notes = formData.get('notes')?.toString().trim() || null;
+
+  if (hours <= 0 || hours > 24) {
+    throw new Error('Hours must be between 0.25 and 24.');
+  }
+
+  const updated = DataStore.updateTimesheet(id, {
+    operator_id,
+    job_id: job_id === 'direct' ? null : job_id,
+    date,
+    hours,
+    notes,
+  });
+
+  const supabase = getSupabaseAdmin();
+  if (supabase) {
+    await supabase
+      .from('timesheets')
+      .update({
+        operator_id: updated.operator_id,
+        job_id: updated.job_id,
+        date: updated.date,
+        hours: updated.hours,
+        notes: updated.notes,
+        rate_applied: updated.rate_applied,
+      })
+      .eq('id', id);
+  }
+
+  revalidatePath('/timesheets');
+  revalidatePath('/payroll');
+  if (updated.operator_id) revalidatePath(`/operators/${updated.operator_id}`);
+  if (updated.job_id) revalidatePath(`/jobs/${updated.job_id}`);
+  return { success: true, timesheet: updated };
+}
+
 // USER MANAGEMENT ACTIONS (ADMIN ONLY)
 export async function inviteUserAction(formData: FormData) {
   await checkAdminPermission();
 
-  const username = formData.get('username')?.toString().trim();
+  const rawUsername = formData.get('username')?.toString().trim();
+  const username = rawUsername?.toLowerCase();
   const password = formData.get('password')?.toString();
   const role = (formData.get('role')?.toString() || 'staff') as UserRole;
   const full_name = formData.get('full_name')?.toString().trim() || null;
@@ -436,6 +567,7 @@ export async function inviteUserAction(formData: FormData) {
     password_hash,
   });
 
+  await DataStore.syncFromSupabase(true).catch(() => {});
   revalidatePath('/users');
   return { success: true, profile };
 }
@@ -456,6 +588,190 @@ export async function resetUserPasswordAction(userId: string, newPassword: strin
 
   const ok = DataStore.resetUserPassword(userId, newPassword);
   if (!ok) throw new Error('User account not found.');
+
+  await DataStore.syncFromSupabase(true).catch(() => {});
+  revalidatePath('/users');
+  return { success: true };
+}
+
+export async function updateUserAction(id: string, formData: FormData) {
+  await checkAdminPermission();
+
+  const rawUsername = formData.get('username')?.toString().trim();
+  const username = rawUsername?.toLowerCase();
+  const full_name = formData.get('full_name')?.toString().trim() || null;
+  const role = formData.get('role')?.toString() as UserRole | undefined;
+  const newPassword = formData.get('new_password')?.toString();
+
+  if (!username) {
+    throw new Error('Username cannot be empty.');
+  }
+
+  if (newPassword && newPassword.length < 6) {
+    throw new Error('Password must be at least 6 characters.');
+  }
+
+  const updates: Partial<Profile> & { newPassword?: string } = {
+    username,
+    full_name,
+  };
+  if (role) updates.role = role;
+  if (newPassword) updates.newPassword = newPassword;
+
+  const supabase = getSupabaseAdmin();
+  if (supabase) {
+    const dbUpdates: Record<string, unknown> = {
+      username,
+      full_name,
+    };
+    if (role) dbUpdates.role = role;
+    if (newPassword) dbUpdates.password_hash = hashPassword(newPassword);
+
+    const { error: dbErr } = await supabase.from('profiles').update(dbUpdates).eq('id', id);
+    if (dbErr) console.error('Supabase profile update error:', dbErr);
+  }
+
+  const updated = DataStore.updateProfile(id, updates);
+
+  // If the user updated is the currently logged-in session user, update their cookie
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get(COOKIE_NAME)?.value;
+    if (token) {
+      const currentSession = verifyJwt(token);
+      if (
+        currentSession &&
+        (currentSession.userId === id ||
+          currentSession.username.toLowerCase() === updated.username.toLowerCase())
+      ) {
+        const newToken = signJwt({
+          userId: updated.id,
+          username: updated.username,
+          role: updated.role,
+          fullName: updated.full_name,
+        });
+        cookieStore.set(COOKIE_NAME, newToken, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          path: '/',
+          maxAge: 7 * 86400,
+        });
+      }
+    }
+  } catch (cookieErr) {
+    console.warn('Could not refresh session cookie in updateUserAction:', cookieErr);
+  }
+
+  await DataStore.syncFromSupabase(true).catch(() => {});
+  revalidatePath('/users');
+  revalidatePath('/', 'layout');
+  return { success: true, profile: updated };
+}
+
+export async function deleteUserAction(id: string) {
+  await checkAdminPermission();
+
+  const supabase = getSupabaseAdmin();
+  if (supabase) {
+    await supabase.from('profiles').delete().eq('id', id);
+  }
+
+  const ok = DataStore.deleteProfile(id);
+  if (!ok) throw new Error('User account not found.');
+
+  revalidatePath('/users');
+  return { success: true };
+}
+
+// FORGOT PASSWORD / PASSWORD RESET REQUESTS
+export async function requestPasswordResetAction(formData: FormData) {
+  const username = formData.get('username')?.toString().trim();
+  const notes = formData.get('notes')?.toString().trim() || null;
+
+  if (!username) {
+    throw new Error('Please enter your username.');
+  }
+
+  // Create request in DataStore
+  const resetReq = DataStore.createPasswordResetRequest(username, notes || undefined);
+
+  // If Supabase is available, we can also record it if table exists
+  const supabase = getSupabaseAdmin();
+  if (supabase) {
+    try {
+      await supabase.from('password_reset_requests').insert({
+        id: resetReq.id,
+        username: resetReq.username,
+        status: resetReq.status,
+        requested_at: resetReq.requested_at,
+        notes: resetReq.notes,
+      });
+    } catch {
+      // ignore if table does not exist in Supabase schema
+    }
+  }
+
+  revalidatePath('/users');
+  return { success: true, request: resetReq };
+}
+
+export async function resolvePasswordResetRequestAction(requestId: string, newPassword: string) {
+  await checkAdminPermission();
+
+  if (!newPassword || newPassword.length < 6) {
+    throw new Error('New password must be at least 6 characters.');
+  }
+
+  const requests = DataStore.getPasswordResetRequests();
+  const targetReq = requests.find((r) => r.id === requestId);
+  if (!targetReq) {
+    throw new Error('Reset request not found.');
+  }
+
+  const user = DataStore.getProfileByUsername(targetReq.username);
+  if (!user) {
+    throw new Error(`No user profile found matching username "${targetReq.username}".`);
+  }
+
+  // Reset user password
+  await resetUserPasswordAction(user.id, newPassword);
+
+  // Mark request resolved
+  DataStore.resolvePasswordResetRequest(requestId, newPassword);
+
+  const supabase = getSupabaseAdmin();
+  if (supabase) {
+    try {
+      await supabase
+        .from('password_reset_requests')
+        .update({ status: 'resolved', resolved_at: new Date().toISOString() })
+        .eq('id', requestId);
+    } catch {
+      // ignore table absence
+    }
+  }
+
+  revalidatePath('/users');
+  return { success: true, username: targetReq.username };
+}
+
+export async function dismissPasswordResetRequestAction(requestId: string) {
+  await checkAdminPermission();
+
+  DataStore.dismissPasswordResetRequest(requestId);
+
+  const supabase = getSupabaseAdmin();
+  if (supabase) {
+    try {
+      await supabase
+        .from('password_reset_requests')
+        .update({ status: 'dismissed', resolved_at: new Date().toISOString() })
+        .eq('id', requestId);
+    } catch {
+      // ignore table absence
+    }
+  }
 
   revalidatePath('/users');
   return { success: true };
