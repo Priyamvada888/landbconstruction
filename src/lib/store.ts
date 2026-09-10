@@ -24,9 +24,14 @@ let profilesStore: Profile[] = [...INITIAL_PROFILES];
 let passwordResetRequestsStore: PasswordResetRequest[] = [];
 let currentSessionRole: UserRole = 'admin'; // default session role
 let isSyncedWithSupabase = false;
+let lastSyncTimestamp = 0;
+const SYNC_CACHE_TTL_MS = 2500; // 2.5s TTL so multiple components on the same page don't spam Supabase
 
 export async function syncFromSupabase(force = false): Promise<boolean> {
-  if (isSyncedWithSupabase && !force) return true;
+  const now = Date.now();
+  if (!force && isSyncedWithSupabase && now - lastSyncTimestamp < SYNC_CACHE_TTL_MS) {
+    return true;
+  }
   const supabase = getSupabaseAdmin();
   if (!supabase) return false;
 
@@ -57,7 +62,7 @@ export async function syncFromSupabase(force = false): Promise<boolean> {
       });
     });
 
-    if (opsRes.data && opsRes.data.length > 0) {
+    if (Array.isArray(opsRes.data)) {
       operatorsStore = opsRes.data.map((op: any) => ({
         id: op.id,
         name: op.name,
@@ -94,7 +99,7 @@ export async function syncFromSupabase(force = false): Promise<boolean> {
       });
     });
 
-    if (jobsRes.data && jobsRes.data.length > 0) {
+    if (Array.isArray(jobsRes.data)) {
       jobsStore = jobsRes.data.map((j: any) => ({
         id: j.id,
         client: j.client,
@@ -117,7 +122,7 @@ export async function syncFromSupabase(force = false): Promise<boolean> {
       }));
     }
 
-    if (tssRes.data && tssRes.data.length > 0) {
+    if (Array.isArray(tssRes.data)) {
       timesheetsStore = tssRes.data.map((ts: any) => {
         const op = operatorsStore.find((o) => o.id === ts.operator_id);
         const j = jobsStore.find((jb) => jb.id === ts.job_id);
@@ -137,7 +142,7 @@ export async function syncFromSupabase(force = false): Promise<boolean> {
       });
     }
 
-    if (profsRes.data && profsRes.data.length > 0) {
+    if (Array.isArray(profsRes.data)) {
       profilesStore = profsRes.data.map((p: any) => ({
         id: p.id,
         username: p.username,
@@ -150,6 +155,7 @@ export async function syncFromSupabase(force = false): Promise<boolean> {
     }
 
     isSyncedWithSupabase = true;
+    lastSyncTimestamp = now;
     return true;
   } catch (err) {
     console.error('Error syncing with Supabase:', err);

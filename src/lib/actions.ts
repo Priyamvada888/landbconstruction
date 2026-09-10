@@ -181,6 +181,7 @@ export async function deleteJobAction(id: string) {
   const ok = DataStore.deleteJob(id);
   if (!ok) throw new Error('Job not found or already removed');
 
+  await DataStore.syncFromSupabase(true).catch(() => {});
   revalidatePath('/dashboard');
   revalidatePath('/jobs');
   return { success: true };
@@ -419,6 +420,7 @@ export async function deleteOperatorAction(id: string) {
   const ok = DataStore.deleteOperator(id);
   if (!ok) throw new Error('Operator not found or already removed');
 
+  await DataStore.syncFromSupabase(true).catch(() => {});
   revalidatePath('/operators');
   revalidatePath('/dashboard');
   return { success: true };
@@ -480,6 +482,7 @@ export async function deleteTimesheetAction(id: string) {
   }
 
   const success = DataStore.deleteTimesheet(id);
+  await DataStore.syncFromSupabase(true).catch(() => {});
   revalidatePath('/timesheets');
   revalidatePath('/payroll');
   return { success };
@@ -680,6 +683,7 @@ export async function deleteUserAction(id: string) {
   const ok = DataStore.deleteProfile(id);
   if (!ok) throw new Error('User account not found.');
 
+  await DataStore.syncFromSupabase(true).catch(() => {});
   revalidatePath('/users');
   return { success: true };
 }
