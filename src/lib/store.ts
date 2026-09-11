@@ -11,16 +11,16 @@ import {
   PayrollEntry,
   OperatorTicket,
   PasswordResetRequest,
+  OperatorDocument,
 } from '@/types/database';
-import { INITIAL_OPERATORS, INITIAL_JOBS, INITIAL_TIMESHEETS, INITIAL_PROFILES } from './mock-data';
 import { hashPassword, verifyPassword } from './jwt';
 import { getSupabaseAdmin } from './supabase/admin';
 
-// Server-side / in-memory store state for development & testability
-let operatorsStore: Operator[] = [...INITIAL_OPERATORS];
-let jobsStore: Job[] = [...INITIAL_JOBS];
-let timesheetsStore: Timesheet[] = [...INITIAL_TIMESHEETS];
-let profilesStore: Profile[] = [...INITIAL_PROFILES];
+// Server-side in-memory cache — always populated from Supabase on first request
+let operatorsStore: Operator[] = [];
+let jobsStore: Job[] = [];
+let timesheetsStore: Timesheet[] = [];
+let profilesStore: Profile[] = [];
 let passwordResetRequestsStore: PasswordResetRequest[] = [];
 let currentSessionRole: UserRole = 'admin'; // default session role
 let isSyncedWithSupabase = false;
@@ -36,9 +36,10 @@ export async function syncFromSupabase(force = false): Promise<boolean> {
   if (!supabase) return false;
 
   try {
-    const [opsRes, ticksRes, jobsRes, asgsRes, tssRes, profsRes] = await Promise.all([
+    const [opsRes, ticksRes, docsRes, jobsRes, asgsRes, tssRes, profsRes] = await Promise.all([
       supabase.from('operators').select('*'),
       supabase.from('operator_tickets').select('*'),
+      Promise.resolve(supabase.from('operator_documents').select('*')).catch(() => ({ data: [] })),
       supabase.from('jobs').select('*'),
       supabase.from('job_assignments').select('*'),
       supabase.from('timesheets').select('*'),
@@ -62,6 +63,21 @@ export async function syncFromSupabase(force = false): Promise<boolean> {
       });
     });
 
+    const docsByOp: Record<string, OperatorDocument[]> = {};
+    ((docsRes && 'data' in docsRes ? docsRes.data : []) || []).forEach((d: any) => {
+      if (!docsByOp[d.operator_id]) docsByOp[d.operator_id] = [];
+      docsByOp[d.operator_id].push({
+        id: d.id,
+        operator_id: d.operator_id,
+        name: d.name,
+        document_type: d.document_type || 'other',
+        file_url: d.file_url,
+        file_type: d.file_type || 'application/pdf',
+        file_size: d.file_size,
+        created_at: d.created_at,
+      });
+    });
+
     if (Array.isArray(opsRes.data)) {
       operatorsStore = opsRes.data.map((op: any) => ({
         id: op.id,
@@ -70,6 +86,9 @@ export async function syncFromSupabase(force = false): Promise<boolean> {
         email: op.email,
         primary_role: op.primary_role,
         location: op.location,
+        address: op.address || op.location,
+        ni_number: op.ni_number || null,
+        utr_number: op.utr_number || null,
         experience_years: Number(op.experience_years || 0),
         current_company: op.current_company,
         availability_status: op.availability_status,
@@ -84,6 +103,7 @@ export async function syncFromSupabase(force = false): Promise<boolean> {
         created_at: op.created_at,
         updated_at: op.updated_at,
         tickets: ticketsByOp[op.id] || [],
+        documents: docsByOp[op.id] || [],
       }));
     }
 
@@ -286,10 +306,15 @@ export const DataStore = {
     const newOp: Operator = {
       id,
       ...data,
+      address: data.address || data.location,
+      location: data.location || data.address || null,
+      ni_number: data.ni_number || null,
+      utr_number: data.utr_number || null,
       is_archived: false,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       tickets: data.tickets || [],
+      documents: data.documents || [],
     };
     operatorsStore.unshift(newOp);
     return newOp;
@@ -307,12 +332,50 @@ export const DataStore = {
       throw new Error('Rates and tax cannot be negative');
     }
 
+    const mergedUpdates = { ...updates };
+    if (mergedUpdates.address && !mergedUpdates.location) {
+      mergedUpdates.location = mergedUpdates.address;
+    }
+    if (mergedUpdates.location && !mergedUpdates.address) {
+      mergedUpdates.address = mergedUpdates.location;
+    }
+
     operatorsStore[idx] = {
       ...operatorsStore[idx],
-      ...updates,
+      ...mergedUpdates,
       updated_at: new Date().toISOString(),
     };
     return operatorsStore[idx];
+  },
+
+  addOperatorDocument(
+    operatorId: string,
+    doc: Omit<OperatorDocument, 'id' | 'operator_id' | 'created_at'> & { id?: string }
+  ): OperatorDocument {
+    const op = this.getOperatorById(operatorId);
+    if (!op) throw new Error('Operator not found');
+    const newDoc: OperatorDocument = {
+      id: doc.id || crypto.randomUUID(),
+      operator_id: operatorId,
+      name: doc.name,
+      document_type: doc.document_type || 'other',
+      file_url: doc.file_url,
+      file_type: doc.file_type || 'application/pdf',
+      file_size: doc.file_size,
+      created_at: new Date().toISOString(),
+    };
+    if (!op.documents) op.documents = [];
+    op.documents.unshift(newDoc);
+    return newDoc;
+  },
+
+  deleteOperatorDocument(operatorId: string, docId: string): boolean {
+    const op = this.getOperatorById(operatorId);
+    if (!op || !op.documents) return false;
+    const idx = op.documents.findIndex((d) => d.id === docId);
+    if (idx === -1) return false;
+    op.documents.splice(idx, 1);
+    return true;
   },
 
   archiveOperator(id: string): Operator {

@@ -107,7 +107,7 @@ export function EditOperatorModal({
                   <HardHat className="w-4 h-4" />
                 </div>
                 <div>
-                  <h2 className="text-base font-bold text-slate-900 leading-tight">Edit Person / Operator</h2>
+                  <h2 className="text-base font-bold text-slate-900 leading-tight">Edit Operator</h2>
                   <p className="text-[11px] text-slate-500">Updating profile for {operator.name}</p>
                 </div>
               </div>
@@ -191,13 +191,40 @@ export function EditOperatorModal({
 
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                        Location / Base Postcode
+                        Address
                       </label>
                       <input
                         type="text"
-                        name="location"
-                        defaultValue={operator.location || ''}
+                        name="address"
+                        defaultValue={operator.address || operator.location || ''}
+                        placeholder="e.g. 10 Courtney Park Road, SS16 6RE"
                         className="w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 text-xs text-slate-900 focus:border-slate-900 focus:bg-white focus:outline-none transition-colors"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                        NI Number (Nino)
+                      </label>
+                      <input
+                        type="text"
+                        name="ni_number"
+                        defaultValue={operator.ni_number || ''}
+                        placeholder="e.g. ST877652A"
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 text-xs text-slate-900 focus:border-indigo-500 focus:bg-white focus:outline-none transition-colors font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                        UTR Number (CIS)
+                      </label>
+                      <input
+                        type="text"
+                        name="utr_number"
+                        defaultValue={operator.utr_number || ''}
+                        placeholder="e.g. 78505 88349"
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 text-xs text-slate-900 focus:border-indigo-500 focus:bg-white focus:outline-none transition-colors font-mono"
                       />
                     </div>
 

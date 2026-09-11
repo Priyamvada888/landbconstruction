@@ -13,6 +13,7 @@ import {
   Settings,
   LogOut,
   ShieldCheck,
+  HardHat,
 } from 'lucide-react';
 import { logoutAction } from '@/lib/auth-actions';
 
@@ -61,7 +62,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const navItems = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Sites', href: '/jobs', icon: Briefcase },
-    { name: 'People', href: '/operators', icon: Users },
+    { name: 'Operators', href: '/operators', icon: HardHat },
     { name: 'Timesheets', href: '/timesheets', icon: Clock },
     ...(user?.role === 'admin'
       ? [{ name: 'Payroll', href: '/payroll', icon: PoundSterling }]

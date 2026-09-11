@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
 import { DataStore } from './store';
-import { JobStatus, OperatorRole, AvailabilityStatus, TicketType, UserRole, Job, Profile } from '@/types/database';
+import { JobStatus, OperatorRole, AvailabilityStatus, TicketType, UserRole, Job, Profile, DocumentType } from '@/types/database';
 import { hashPassword, signJwt, verifyJwt, COOKIE_NAME } from './jwt';
 import { getSupabaseAdmin } from './supabase/admin';
 
@@ -241,7 +241,10 @@ export async function createOperatorAction(formData: FormData) {
   const phone = formData.get('phone')?.toString().trim() || null;
   const email = formData.get('email')?.toString().trim() || null;
   const primary_role = formData.get('primary_role')?.toString() as OperatorRole;
-  const location = formData.get('location')?.toString().trim() || null;
+  const address = formData.get('address')?.toString().trim() || null;
+  const location = address; // keep in sync
+  const ni_number = formData.get('ni_number')?.toString().trim() || null;
+  const utr_number = formData.get('utr_number')?.toString().trim() || null;
   const experience_years = parseInt(formData.get('experience_years')?.toString() || '0', 10);
   const current_company = formData.get('current_company')?.toString().trim() || null;
   const availability_status = (formData.get('availability_status')?.toString() || 'Available') as AvailabilityStatus;
@@ -291,6 +294,9 @@ export async function createOperatorAction(formData: FormData) {
       email,
       primary_role,
       location,
+      address,
+      ni_number,
+      utr_number,
       experience_years,
       current_company,
       availability_status,
@@ -323,6 +329,9 @@ export async function createOperatorAction(formData: FormData) {
     email,
     primary_role,
     location,
+    address,
+    ni_number,
+    utr_number,
     experience_years,
     current_company,
     availability_status,
@@ -346,7 +355,10 @@ export async function updateOperatorAction(id: string, formData: FormData) {
   const phone = formData.get('phone')?.toString().trim() || null;
   const email = formData.get('email')?.toString().trim() || null;
   const primary_role = formData.get('primary_role')?.toString() as OperatorRole;
-  const location = formData.get('location')?.toString().trim() || null;
+  const address = formData.get('address')?.toString().trim() || null;
+  const location = address;
+  const ni_number = formData.get('ni_number')?.toString().trim() || null;
+  const utr_number = formData.get('utr_number')?.toString().trim() || null;
   const experience_years = parseInt(formData.get('experience_years')?.toString() || '0', 10);
   const current_company = formData.get('current_company')?.toString().trim() || null;
   const availability_status = (formData.get('availability_status')?.toString() || 'Available') as AvailabilityStatus;
@@ -358,12 +370,15 @@ export async function updateOperatorAction(id: string, formData: FormData) {
     email,
     primary_role,
     location,
+    address,
+    ni_number,
+    utr_number,
     experience_years,
     current_company,
     availability_status,
   };
 
-  // Only admin can update rates and bank details per Section 7
+  // Only admin can update rates and bank details
   if (role === 'admin') {
     if (formData.has('hourly_rate')) updates.hourly_rate = parseFloat(formData.get('hourly_rate')!.toString());
     if (formData.has('daily_rate')) updates.daily_rate = parseFloat(formData.get('daily_rate')!.toString());
@@ -384,6 +399,98 @@ export async function updateOperatorAction(id: string, formData: FormData) {
   revalidatePath('/operators');
   revalidatePath(`/operators/${id}`);
   return { success: true, operator: updated };
+}
+
+// DOCUMENT ACTIONS — upload to Supabase Storage bucket 'operator-documents'
+export async function uploadOperatorDocumentAction(operatorId: string, formData: FormData) {
+  const file = formData.get('file') as File | null;
+  const docName = formData.get('doc_name')?.toString().trim() || file?.name || 'Unnamed Document';
+  const document_type = (formData.get('document_type')?.toString() || 'other') as DocumentType;
+
+  if (!file || file.size === 0) throw new Error('No file provided.');
+
+  const supabase = getSupabaseAdmin();
+  if (!supabase) throw new Error('Database not available.');
+
+  const ext = file.name.split('.').pop() || 'bin';
+  const storagePath = `${operatorId}/${crypto.randomUUID()}.${ext}`;
+
+  // Upload file bytes to Supabase Storage
+  const arrayBuffer = await file.arrayBuffer();
+  const { error: uploadErr } = await supabase.storage
+    .from('operator-documents')
+    .upload(storagePath, arrayBuffer, {
+      contentType: file.type,
+      upsert: false,
+    });
+
+  if (uploadErr) {
+    console.error('Supabase storage upload error:', uploadErr);
+    throw new Error(`Upload failed: ${uploadErr.message}`);
+  }
+
+  // Get public URL
+  const { data: urlData } = supabase.storage
+    .from('operator-documents')
+    .getPublicUrl(storagePath);
+
+  const file_url = urlData.publicUrl;
+
+  // Insert doc record into operator_documents table
+  const docId = crypto.randomUUID();
+  const { error: dbErr } = await supabase.from('operator_documents').insert({
+    id: docId,
+    operator_id: operatorId,
+    name: docName,
+    document_type,
+    file_url,
+    file_type: file.type,
+    file_size: file.size,
+    storage_path: storagePath,
+  });
+  if (dbErr) {
+    console.error('Supabase doc insert error:', dbErr);
+    throw new Error(`Failed to save document record: ${dbErr.message}`);
+  }
+
+  // Also update in-memory store
+  DataStore.addOperatorDocument(operatorId, {
+    id: docId,
+    name: docName,
+    document_type,
+    file_url,
+    file_type: file.type,
+    file_size: file.size,
+  });
+
+  revalidatePath(`/operators/${operatorId}`);
+  return { success: true, docId, file_url };
+}
+
+export async function deleteOperatorDocumentAction(operatorId: string, docId: string) {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) throw new Error('Database not available.');
+
+  // Get storage path before deletion
+  const { data: docRow } = await supabase
+    .from('operator_documents')
+    .select('storage_path')
+    .eq('id', docId)
+    .single();
+
+  // Delete from storage if we have a path
+  if (docRow?.storage_path) {
+    await supabase.storage.from('operator-documents').remove([docRow.storage_path]);
+  }
+
+  // Delete from DB
+  await supabase.from('operator_documents').delete().eq('id', docId);
+
+  // Delete from in-memory store
+  DataStore.deleteOperatorDocument(operatorId, docId);
+
+  revalidatePath(`/operators/${operatorId}`);
+  return { success: true };
 }
 
 export async function archiveOperatorAction(id: string) {

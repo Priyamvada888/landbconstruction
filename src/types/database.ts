@@ -69,6 +69,20 @@ export interface OperatorTicket {
   created_at?: string;
 }
 
+export type DocumentType = 'passport' | 'driving_license' | 'ticket' | 'other';
+
+export interface OperatorDocument {
+  id: string;
+  operator_id: string;
+  name: string;
+  document_type: DocumentType;
+  file_url: string; // Supabase Storage public URL
+  file_type: string; // e.g. 'application/pdf', 'image/jpeg', 'image/png'
+  file_size?: number;
+  storage_path?: string; // path within the storage bucket
+  created_at?: string;
+}
+
 export interface Operator {
   id: string;
   name: string;
@@ -76,6 +90,9 @@ export interface Operator {
   email: string | null;
   primary_role: OperatorRole;
   location: string | null;
+  address?: string | null;
+  ni_number?: string | null;
+  utr_number?: string | null;
   experience_years: number;
   current_company: string | null;
   availability_status: AvailabilityStatus;
@@ -90,6 +107,7 @@ export interface Operator {
   created_at: string;
   updated_at: string;
   tickets?: OperatorTicket[];
+  documents?: OperatorDocument[];
 }
 
 export interface Job {

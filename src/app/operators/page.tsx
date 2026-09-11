@@ -39,20 +39,14 @@ export default async function OperatorsPage({
 
   const filterTabs = ['Active', 'Available', 'Working', 'Starting Soon', 'On Leave', 'All'];
 
-  const getStatusBadge = (status: AvailabilityStatus) => {
+  const getStatusColor = (status: AvailabilityStatus) => {
     switch (status) {
-      case 'Available':
-        return 'text-emerald-700 border-emerald-300';
-      case 'Working':
-        return 'text-blue-700 border-blue-300';
-      case 'Starting Soon':
-        return 'text-amber-700 border-amber-300';
-      case 'On Leave':
-        return 'text-slate-600 border-slate-300';
-      case 'Do Not Use':
-        return 'text-rose-700 border-rose-300';
-      default:
-        return 'text-slate-700 border-slate-300';
+      case 'Available': return 'text-emerald-600';
+      case 'Working': return 'text-blue-600';
+      case 'Starting Soon': return 'text-amber-600';
+      case 'On Leave': return 'text-slate-500';
+      case 'Do Not Use': return 'text-rose-600';
+      default: return 'text-slate-500';
     }
   };
 
@@ -62,7 +56,7 @@ export default async function OperatorsPage({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
-            People
+            Operators
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
             Manage and collaborate within your organization&apos;s plant operators and civil engineering teams
@@ -123,11 +117,11 @@ export default async function OperatorsPage({
         </div>
       </div>
 
-      {/* Mobile & Tablet People Cards (< lg) */}
+      {/* Mobile & Tablet Operator Cards (< lg) */}
       <div className="lg:hidden space-y-3">
         {filtered.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center bg-white text-slate-400 text-xs">
-            No people found matching your criteria.
+                        No operators found matching your criteria.
           </div>
         ) : (
           filtered.map((op) => {
@@ -148,11 +142,7 @@ export default async function OperatorsPage({
                     </div>
                   </div>
 
-                  <span
-                    className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border ${getStatusBadge(
-                      op.availability_status
-                    )}`}
-                  >
+                  <span className={`text-[11px] font-semibold ${getStatusColor(op.availability_status)}`}>
                     {op.availability_status}
                   </span>
                 </div>
@@ -211,7 +201,7 @@ export default async function OperatorsPage({
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-12 text-center text-slate-400">
-                    No people found matching your criteria.
+                                No operators found matching your criteria.
                   </td>
                 </tr>
               ) : (
@@ -255,11 +245,7 @@ export default async function OperatorsPage({
                         {op.primary_role}
                       </td>
                       <td className="px-4 py-4">
-                        <span
-                          className={`inline-flex px-2.5 py-1 rounded-full text-[11px] font-bold border ${getStatusBadge(
-                            op.availability_status
-                          )}`}
-                        >
+                        <span className={`text-xs font-semibold ${getStatusColor(op.availability_status)}`}>
                           {op.availability_status}
                         </span>
                       </td>
