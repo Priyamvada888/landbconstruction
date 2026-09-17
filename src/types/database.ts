@@ -27,13 +27,15 @@ export type TicketType =
   | 'Dumper'
   | 'Roller'
   | 'Telehandler'
+  | 'Loading Shovel'
   | 'CPCS'
   | 'NPORS'
   | 'EUSR'
   | 'CSCS'
   | 'First Aid'
   | 'Confined Space'
-  | 'Slinger/Signaller';
+  | 'Slinger/Signaller'
+  | (string & {});
 
 export type JobStatus =
   | 'Draft'
@@ -69,7 +71,7 @@ export interface OperatorTicket {
   created_at?: string;
 }
 
-export type DocumentType = 'passport' | 'driving_license' | 'ticket' | 'other';
+export type DocumentType = 'passport' | 'driving_license' | 'ticket' | 'id' | 'other';
 
 export interface OperatorDocument {
   id: string;
@@ -110,6 +112,12 @@ export interface Operator {
   documents?: OperatorDocument[];
 }
 
+export interface JobRoleRequirement {
+  role: OperatorRole;
+  count: number;
+  start_date?: string | null;
+}
+
 export interface Job {
   id: string;
   client: string;
@@ -119,6 +127,7 @@ export interface Job {
   end_date: string | null;
   required_operator_count: number;
   required_role: OperatorRole;
+  role_requirements?: JobRoleRequirement[];
   pay_rate: number;
   charge_rate: number;
   site_contact_name: string | null;
@@ -141,12 +150,15 @@ export interface JobAssignment {
   created_at?: string;
   operator?: Operator;
   job?: Job;
+  assigned_role?: OperatorRole;
+  start_date?: string | null;
 }
 
 export interface Timesheet {
   id: string;
   operator_id: string;
   date: string;
+  end_date?: string | null;
   hours: number;
   job_id: string | null;
   notes: string | null;

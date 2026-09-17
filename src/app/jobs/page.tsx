@@ -144,7 +144,14 @@ export default async function JobsListPage({
                 )}
 
                 <div className="mt-3 p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between text-xs">
-                  <span className="font-semibold text-slate-700">{job.required_role}</span>
+                  <span
+                    className="font-semibold text-slate-700 truncate max-w-[170px]"
+                    title={job.role_requirements?.map((r) => `${r.count}x ${r.role}`).join(', ')}
+                  >
+                    {job.role_requirements && job.role_requirements.length > 1
+                      ? `${job.role_requirements.length} Roles (${job.role_requirements.map((r) => `${r.count}x ${r.role.replace(' Operator', '')}`).join(', ')})`
+                      : job.required_role}
+                  </span>
                   <span
                     className={`font-bold text-[11px] ${
                       isFilled ? 'text-emerald-600' : 'text-amber-600'
@@ -203,8 +210,13 @@ export default async function JobsListPage({
                         </div>
                       </td>
                       <td className="px-4 py-4">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-lg bg-slate-100 border border-slate-200 text-slate-700 font-semibold text-[11px]">
-                          {job.required_role}
+                        <span
+                          className="inline-flex items-center px-2 py-0.5 rounded-lg bg-slate-100 border border-slate-200 text-slate-700 font-semibold text-[11px]"
+                          title={job.role_requirements?.map((r) => `${r.count}x ${r.role}`).join(', ')}
+                        >
+                          {job.role_requirements && job.role_requirements.length > 1
+                            ? `${job.role_requirements.length} Roles (${job.role_requirements.map((r) => `${r.count}x ${r.role.replace(' Operator', '')}`).join(', ')})`
+                            : job.required_role}
                         </span>
                       </td>
                       <td className="px-4 py-4">

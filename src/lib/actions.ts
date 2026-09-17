@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
 import { DataStore } from './store';
-import { JobStatus, OperatorRole, AvailabilityStatus, TicketType, UserRole, Job, Profile, DocumentType } from '@/types/database';
+import { JobStatus, OperatorRole, AvailabilityStatus, TicketType, UserRole, Job, Profile, DocumentType, JobRoleRequirement } from '@/types/database';
 import { hashPassword, signJwt, verifyJwt, COOKIE_NAME } from './jwt';
 import { getSupabaseAdmin } from './supabase/admin';
 
@@ -27,13 +27,31 @@ export async function createJobAction(formData: FormData) {
   const postcode = formData.get('postcode')?.toString().trim() || null;
   const start_date = formData.get('start_date')?.toString() || new Date().toISOString().split('T')[0];
   const end_date = formData.get('end_date')?.toString() || null;
-  const required_operator_count = parseInt(formData.get('required_operator_count')?.toString() || '1', 10);
-  const required_role = formData.get('required_role')?.toString() as OperatorRole;
   const pay_rate = parseFloat(formData.get('pay_rate')?.toString() || '0');
   const charge_rate = parseFloat(formData.get('charge_rate')?.toString() || '0');
   const site_contact_name = formData.get('site_contact_name')?.toString().trim() || null;
   const site_contact_phone = formData.get('site_contact_phone')?.toString().trim() || null;
   const notes = formData.get('notes')?.toString().trim() || null;
+
+  const rawRoles = formData.get('role_requirements')?.toString();
+  let role_requirements: JobRoleRequirement[] | undefined;
+  if (rawRoles) {
+    try {
+      role_requirements = JSON.parse(rawRoles);
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  let required_operator_count = parseInt(formData.get('required_operator_count')?.toString() || '1', 10);
+  let required_role = formData.get('required_role')?.toString() as OperatorRole;
+
+  if (role_requirements && role_requirements.length > 0) {
+    required_operator_count = role_requirements.reduce((acc, r) => acc + (Number(r.count) || 0), 0);
+    if (!required_role || required_role === '' as OperatorRole) {
+      required_role = role_requirements[0].role;
+    }
+  }
 
   if (!client || !site_name || !required_role) {
     throw new Error('Client name, site name, and required role are required.');
@@ -50,6 +68,10 @@ export async function createJobAction(formData: FormData) {
   const jobId = crypto.randomUUID();
   const supabase = getSupabaseAdmin();
 
+  const notesForSupabase = role_requirements && role_requirements.length > 0
+    ? `${notes || ''}\n<!--ROLES:${JSON.stringify(role_requirements)}-->`.trim()
+    : notes;
+
   if (supabase) {
     const { error: dbErr } = await supabase.from('jobs').insert({
       id: jobId,
@@ -64,7 +86,7 @@ export async function createJobAction(formData: FormData) {
       charge_rate,
       site_contact_name,
       site_contact_phone,
-      notes,
+      notes: notesForSupabase,
       status: 'Draft',
       is_archived: false,
     });
@@ -82,6 +104,7 @@ export async function createJobAction(formData: FormData) {
     end_date,
     required_operator_count,
     required_role,
+    role_requirements,
     pay_rate,
     charge_rate,
     site_contact_name,
@@ -120,14 +143,32 @@ export async function updateJobAction(id: string, formData: FormData) {
   const postcode = formData.get('postcode')?.toString().trim() || null;
   const start_date = formData.get('start_date')?.toString();
   const end_date = formData.get('end_date')?.toString() || null;
-  const required_operator_count = parseInt(formData.get('required_operator_count')?.toString() || '1', 10);
-  const required_role = formData.get('required_role')?.toString() as OperatorRole;
   const pay_rate = parseFloat(formData.get('pay_rate')?.toString() || '0');
   const charge_rate = parseFloat(formData.get('charge_rate')?.toString() || '0');
   const site_contact_name = formData.get('site_contact_name')?.toString().trim() || null;
   const site_contact_phone = formData.get('site_contact_phone')?.toString().trim() || null;
   const notes = formData.get('notes')?.toString().trim() || null;
   const status = formData.get('status')?.toString() as JobStatus | undefined;
+
+  const rawRoles = formData.get('role_requirements')?.toString();
+  let role_requirements: JobRoleRequirement[] | undefined;
+  if (rawRoles) {
+    try {
+      role_requirements = JSON.parse(rawRoles);
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  let required_operator_count = parseInt(formData.get('required_operator_count')?.toString() || '1', 10);
+  let required_role = formData.get('required_role')?.toString() as OperatorRole;
+
+  if (role_requirements && role_requirements.length > 0) {
+    required_operator_count = role_requirements.reduce((acc, r) => acc + (Number(r.count) || 0), 0);
+    if (!required_role || required_role === '' as OperatorRole) {
+      required_role = role_requirements[0].role;
+    }
+  }
 
   if (!client || !site_name || !required_role) {
     throw new Error('Client name, site name, and required role are required.');
@@ -154,13 +195,21 @@ export async function updateJobAction(id: string, formData: FormData) {
     notes,
   };
 
+  if (role_requirements) updates.role_requirements = role_requirements;
   if (start_date) updates.start_date = start_date;
   if (end_date !== undefined) updates.end_date = end_date;
   if (status) updates.status = status;
 
+  const notesForSupabase = role_requirements && role_requirements.length > 0
+    ? `${notes || ''}\n<!--ROLES:${JSON.stringify(role_requirements)}-->`.trim()
+    : notes;
+
   const supabase = getSupabaseAdmin();
   if (supabase) {
-    const { error: dbErr } = await supabase.from('jobs').update(updates).eq('id', id);
+    const { error: dbErr } = await supabase.from('jobs').update({
+      ...updates,
+      notes: notesForSupabase,
+    }).eq('id', id);
     if (dbErr) console.error('Supabase job update error:', dbErr);
   }
 
@@ -187,7 +236,7 @@ export async function deleteJobAction(id: string) {
   return { success: true };
 }
 
-export async function assignOperatorAction(jobId: string, operatorId: string) {
+export async function assignOperatorAction(jobId: string, operatorId: string, assignedRole?: OperatorRole, startDate?: string | null) {
   const supabase = getSupabaseAdmin();
   if (supabase) {
     const { error: dbErr } = await supabase.from('job_assignments').insert({
@@ -197,7 +246,7 @@ export async function assignOperatorAction(jobId: string, operatorId: string) {
     if (dbErr) console.error('Supabase assignment error:', dbErr);
   }
 
-  const updatedJob = DataStore.assignOperatorToJob(jobId, operatorId);
+  const updatedJob = DataStore.assignOperatorToJob(jobId, operatorId, assignedRole, startDate);
 
   if (supabase && updatedJob.status) {
     await supabase.from('jobs').update({ status: updatedJob.status }).eq('id', jobId);
@@ -389,10 +438,35 @@ export async function updateOperatorAction(id: string, formData: FormData) {
     if (formData.has('bank_sort_code')) updates.bank_sort_code = formData.get('bank_sort_code')?.toString().trim() || null;
   }
 
+  const rawTickets = formData.getAll('tickets').map((t) => t.toString());
+  const tickets = rawTickets.map((t) => ({
+    id: crypto.randomUUID(),
+    operator_id: id,
+    ticket_type: t,
+    expiry_date: null,
+  }));
+  if (formData.has('tickets') || rawTickets.length > 0) {
+    updates.tickets = tickets;
+  }
+
   const supabase = getSupabaseAdmin();
   if (supabase) {
-    const { error: dbErr } = await supabase.from('operators').update(updates).eq('id', id);
+    const { tickets: _t, ...scalarUpdates } = updates;
+    const { error: dbErr } = await supabase.from('operators').update(scalarUpdates).eq('id', id);
     if (dbErr) console.error('Supabase operator update error:', dbErr);
+
+    if (formData.has('tickets') || rawTickets.length > 0) {
+      await supabase.from('operator_tickets').delete().eq('operator_id', id);
+      if (tickets.length > 0) {
+        await supabase.from('operator_tickets').insert(
+          tickets.map((tk) => ({
+            operator_id: id,
+            ticket_type: tk.ticket_type,
+            expiry_date: null,
+          }))
+        );
+      }
+    }
   }
 
   const updated = DataStore.updateOperator(id, updates);
@@ -438,11 +512,12 @@ export async function uploadOperatorDocumentAction(operatorId: string, formData:
 
   // Insert doc record into operator_documents table
   const docId = crypto.randomUUID();
+  const dbDocType = document_type === 'id' ? 'passport' : document_type;
   const { error: dbErr } = await supabase.from('operator_documents').insert({
     id: docId,
     operator_id: operatorId,
     name: docName,
-    document_type,
+    document_type: dbDocType,
     file_url,
     file_type: file.type,
     file_size: file.size,
@@ -493,6 +568,22 @@ export async function deleteOperatorDocumentAction(operatorId: string, docId: st
   return { success: true };
 }
 
+export async function deleteOperatorTicketAction(operatorId: string, ticketId: string) {
+  const supabase = getSupabaseAdmin();
+  if (supabase) {
+    await supabase.from('operator_tickets').delete().eq('id', ticketId);
+  }
+
+  // Remove from in-memory store
+  const op = DataStore.getOperatorById(operatorId);
+  if (op && op.tickets) {
+    op.tickets = op.tickets.filter((t) => t.id !== ticketId);
+  }
+
+  revalidatePath(`/operators/${operatorId}`);
+  return { success: true };
+}
+
 export async function archiveOperatorAction(id: string) {
   const supabase = getSupabaseAdmin();
   if (supabase) {
@@ -538,15 +629,24 @@ export async function logTimesheetAction(formData: FormData) {
   const operator_id = formData.get('operator_id')?.toString();
   const job_id = formData.get('job_id')?.toString() || null;
   const date = formData.get('date')?.toString() || new Date().toISOString().split('T')[0];
+  const end_date = formData.get('end_date')?.toString() || null;
   const hours = parseFloat(formData.get('hours')?.toString() || '0');
-  const notes = formData.get('notes')?.toString().trim() || null;
+  let notes = formData.get('notes')?.toString().trim() || null;
 
   if (!operator_id) {
     throw new Error('Operator is required.');
   }
 
-  if (hours <= 0 || hours > 24) {
-    throw new Error('Hours must be between 0.25 and 24.');
+  const isPeriod = Boolean(end_date && end_date !== date);
+  const maxAllowed = isPeriod ? 168 : 24;
+
+  if (hours <= 0 || hours > maxAllowed) {
+    throw new Error(`Hours must be between 0.25 and ${maxAllowed}.`);
+  }
+
+  if (isPeriod) {
+    const periodTag = `[Period: ${date} to ${end_date}]`;
+    notes = notes ? `${periodTag} ${notes}` : periodTag;
   }
 
   const tsId = crypto.randomUUID();
@@ -555,6 +655,7 @@ export async function logTimesheetAction(formData: FormData) {
     operator_id,
     job_id: job_id === 'direct' ? null : job_id,
     date,
+    end_date: isPeriod ? end_date : null,
     hours,
     notes,
   });

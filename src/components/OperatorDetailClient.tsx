@@ -32,6 +32,7 @@ import {
   deleteTimesheetAction,
   uploadOperatorDocumentAction,
   deleteOperatorDocumentAction,
+  deleteOperatorTicketAction,
 } from '@/lib/actions';
 import { QuickLogHoursModal } from '@/components/QuickLogHoursModal';
 import { EditOperatorModal } from '@/components/EditOperatorModal';
@@ -40,11 +41,13 @@ import { formatCurrency } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
 
 const DOC_TYPE_LABELS: Record<DocumentType, string> = {
+  id: 'ID Document',
   passport: 'Passport',
   driving_license: 'Driving Licence',
-  ticket: 'CPCS / Card',
+  ticket: 'Ticket / Cert',
   other: 'Document',
 };
+
 
 const STATUS_COLORS: Record<string, string> = {
   'Available': 'text-emerald-600',
@@ -213,6 +216,7 @@ export function OperatorDetailClient({ operator, timesheets, allJobs, hoursSumma
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [localDocs, setLocalDocs] = useState<OperatorDocument[]>(operator.documents || []);
+  const [localTickets, setLocalTickets] = useState(operator.tickets || []);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -282,6 +286,14 @@ export function OperatorDetailClient({ operator, timesheets, allJobs, hoursSumma
     startTransition(async () => {
       await deleteOperatorDocumentAction(operator.id, docId);
       setLocalDocs((prev) => prev.filter((d) => d.id !== docId));
+    });
+  };
+
+  const handleDeleteTicket = (ticketId: string, ticketType: string) => {
+    if (!confirm(`Remove "${ticketType}" from this operator's certifications?`)) return;
+    startTransition(async () => {
+      await deleteOperatorTicketAction(operator.id, ticketId);
+      setLocalTickets((prev) => prev.filter((t) => t.id !== ticketId));
     });
   };
 
@@ -427,29 +439,39 @@ export function OperatorDetailClient({ operator, timesheets, allJobs, hoursSumma
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wide flex items-center gap-1.5 mb-3">
               <Award className="w-3.5 h-3.5 text-indigo-500" /> Certifications
+              {localTickets.length > 0 && <span className="text-slate-400 font-normal">({localTickets.length})</span>}
             </h2>
-            {(operator.tickets || []).length === 0 ? (
+            {localTickets.length === 0 ? (
               <p className="text-xs text-slate-400">No tickets registered.</p>
             ) : (
               <div className="space-y-2">
-                {(operator.tickets || []).map((t) => {
+                {localTickets.map((t) => {
                   const expired = isTicketExpired(t.expiry_date);
                   const expiringSoon = isTicketExpiringSoon(t.expiry_date);
                   return (
-                    <div key={t.id} className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0 text-xs">
+                    <div key={t.id} className="group flex items-center justify-between py-2 border-b border-slate-100 last:border-0 text-xs">
                       <div>
                         <p className="font-semibold text-slate-800">{t.ticket_type}</p>
                         <p className="text-slate-400 text-[11px]">{t.expiry_date ? `Exp: ${t.expiry_date}` : 'No expiry'}</p>
                       </div>
-                      {expired ? (
-                        <span className="flex items-center gap-1 text-rose-600 text-[11px] font-semibold">
-                          <AlertTriangle className="w-3 h-3" /> Expired
-                        </span>
-                      ) : expiringSoon ? (
-                        <span className="text-amber-600 text-[11px] font-semibold">Expiring soon</span>
-                      ) : (
-                        <span className="text-emerald-600 text-[11px] font-semibold">Valid</span>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {expired ? (
+                          <span className="flex items-center gap-1 text-rose-600 text-[11px] font-semibold">
+                            <AlertTriangle className="w-3 h-3" /> Expired
+                          </span>
+                        ) : expiringSoon ? (
+                          <span className="text-amber-600 text-[11px] font-semibold">Expiring soon</span>
+                        ) : (
+                          <span className="text-emerald-600 text-[11px] font-semibold">Valid</span>
+                        )}
+                        <button
+                          onClick={() => handleDeleteTicket(t.id, t.ticket_type)}
+                          className="p-1 rounded-lg text-slate-300 hover:text-rose-600 hover:bg-rose-50 opacity-0 group-hover:opacity-100 transition-all ml-1"
+                          title="Remove ticket"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -519,7 +541,7 @@ export function OperatorDetailClient({ operator, timesheets, allJobs, hoursSumma
                   <FileText className="w-3.5 h-3.5 text-indigo-500" /> Documents
                   {localDocs.length > 0 && <span className="text-slate-400 font-normal">({localDocs.length})</span>}
                 </h2>
-                <p className="text-[11px] text-slate-400 mt-0.5">Passport · Driving Licence · CPCS Cards · PDFs</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">Passport · Driving Licence · Tickets &amp; Certifications</p>
               </div>
               <div className="flex items-center gap-2">
                 <select
@@ -529,8 +551,8 @@ export function OperatorDetailClient({ operator, timesheets, allJobs, hoursSumma
                 >
                   <option value="passport">Passport</option>
                   <option value="driving_license">Driving Licence</option>
-                  <option value="ticket">CPCS / CSCS</option>
-                  <option value="other">Other</option>
+                  <option value="ticket">Tickets &amp; Certifications</option>
+                  <option value="other">Other Document</option>
                 </select>
                 <button
                   type="button"

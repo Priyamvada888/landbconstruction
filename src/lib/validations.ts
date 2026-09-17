@@ -18,11 +18,11 @@ const jobStatuses = [
 
 const ticketTypes = [
   'Excavator 180', 'Excavator 360', 'ADT', 'Dozer', 'Dumper', 'Roller',
-  'Telehandler', 'CPCS', 'NPORS', 'EUSR', 'CSCS', 'First Aid',
+  'Telehandler', 'Loading Shovel', 'CPCS', 'NPORS', 'EUSR', 'CSCS', 'First Aid',
   'Confined Space', 'Slinger/Signaller',
 ] as const;
 
-const documentTypes = ['passport', 'driving_license', 'ticket', 'other'] as const;
+const documentTypes = ['passport', 'driving_license', 'ticket', 'id', 'other'] as const;
 
 // ── UK-specific validators ────────────────────────────────────────────────────
 
@@ -91,6 +91,7 @@ export const createJobSchema = z.object({
   end_date: z.string().nullable().optional(),
   required_operator_count: z.coerce.number().int().min(1, 'At least 1 operator required').default(1),
   required_role: z.enum(operatorRoles, { message: 'Select a valid role' }),
+  role_requirements: z.string().nullable().optional(),
   pay_rate: z.coerce.number().min(0, 'Cannot be negative').max(500).default(0),
   charge_rate: z.coerce.number().min(0, 'Cannot be negative').max(1000).default(0),
   site_contact_name: z.string().trim().max(120).nullable().optional(),
@@ -113,9 +114,10 @@ export const logTimesheetSchema = z.object({
   operator_id: z.string().uuid('Invalid operator'),
   job_id: z.string().nullable().optional(),
   date: z.string().min(1, 'Date is required'),
+  end_date: z.string().nullable().optional(),
   hours: z.coerce.number()
     .min(0.25, 'Minimum 0.25 hours')
-    .max(24, 'Maximum 24 hours per day'),
+    .max(168, 'Maximum 168 hours for timesheet period'),
   notes: z.string().trim().max(500).nullable().optional(),
 });
 
