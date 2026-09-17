@@ -17,14 +17,14 @@ const AVAILABILITIES: AvailabilityStatus[] = [
 
 const TICKET_TYPES: TicketType[] = [
   'Excavator 180', 'Excavator 360', 'ADT', 'Dozer', 'Dumper', 'Roller',
-  'Telehandler', 'CPCS', 'NPORS', 'EUSR', 'CSCS', 'First Aid',
+  'Telehandler', 'Loading Shovel', 'CPCS', 'NPORS', 'EUSR', 'CSCS', 'First Aid',
   'Confined Space', 'Slinger/Signaller',
 ];
 
 const DOC_TYPES: { value: DocumentType; label: string }[] = [
   { value: 'passport', label: 'Passport' },
   { value: 'driving_license', label: 'Driving Licence' },
-  { value: 'ticket', label: 'CPCS / CSCS Card' },
+  { value: 'ticket', label: 'Tickets & Certifications' },
   { value: 'other', label: 'Other Document' },
 ];
 
@@ -44,6 +44,8 @@ export function CreateOperatorModal({ currentRole }: CreateOperatorModalProps) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [selectedTickets, setSelectedTickets] = useState<TicketType[]>(['CSCS']);
+  const [availableTickets, setAvailableTickets] = useState<TicketType[]>(TICKET_TYPES);
+  const [customTicketInput, setCustomTicketInput] = useState('');
   const [pendingDocs, setPendingDocs] = useState<PendingDoc[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -55,6 +57,18 @@ export function CreateOperatorModal({ currentRole }: CreateOperatorModalProps) {
     } else {
       setSelectedTickets([...selectedTickets, ticket]);
     }
+  };
+
+  const handleAddCustomTicket = () => {
+    const trimmed = customTicketInput.trim();
+    if (!trimmed) return;
+    if (!availableTickets.includes(trimmed)) {
+      setAvailableTickets([...availableTickets, trimmed]);
+    }
+    if (!selectedTickets.includes(trimmed)) {
+      setSelectedTickets([...selectedTickets, trimmed]);
+    }
+    setCustomTicketInput('');
   };
 
   const handleAddFiles = useCallback((files: FileList | File[]) => {
@@ -243,7 +257,7 @@ export function CreateOperatorModal({ currentRole }: CreateOperatorModalProps) {
               <div>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">4. Tickets & Certifications</p>
                 <div className="flex flex-wrap gap-2 p-3 rounded-2xl bg-slate-50 border border-slate-100">
-                  {TICKET_TYPES.map((t) => {
+                  {availableTickets.map((t) => {
                     const isSelected = selectedTickets.includes(t);
                     return (
                       <button key={t} type="button" onClick={() => handleToggleTicket(t)}
@@ -254,6 +268,30 @@ export function CreateOperatorModal({ currentRole }: CreateOperatorModalProps) {
                   })}
                 </div>
                 {selectedTickets.map((t) => <input key={t} type="hidden" name="tickets" value={t} />)}
+
+                {/* Manual custom ticket add */}
+                <div className="flex items-center gap-2 mt-2.5">
+                  <input
+                    type="text"
+                    value={customTicketInput}
+                    onChange={(e) => setCustomTicketInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddCustomTicket();
+                      }
+                    }}
+                    placeholder="Add custom ticket (e.g. Loading Shovel, Hiab, SSSTS)"
+                    className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:border-indigo-500 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddCustomTicket}
+                    className="px-3 py-1.5 rounded-xl bg-slate-900 text-white text-xs font-semibold hover:bg-slate-800 transition-colors shrink-0"
+                  >
+                    + Add Ticket
+                  </button>
+                </div>
               </div>
 
               {/* ── 5. Bank Details (Admin) ── */}

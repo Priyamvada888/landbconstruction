@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { Edit, X, HardHat, CreditCard } from 'lucide-react';
-import { Operator, OperatorRole, AvailabilityStatus, UserRole } from '@/types/database';
+import { Edit, X, HardHat, CreditCard, Award } from 'lucide-react';
+import { Operator, OperatorRole, AvailabilityStatus, UserRole, TicketType } from '@/types/database';
 import { updateOperatorAction } from '@/lib/actions';
 import { useRouter } from 'next/navigation';
 
@@ -25,6 +25,12 @@ const AVAILABILITIES: AvailabilityStatus[] = [
   'Starting Soon',
   'On Leave',
   'Do Not Use',
+];
+
+const TICKET_TYPES: TicketType[] = [
+  'Excavator 180', 'Excavator 360', 'ADT', 'Dozer', 'Dumper', 'Roller',
+  'Telehandler', 'Loading Shovel', 'CPCS', 'NPORS', 'EUSR', 'CSCS', 'First Aid',
+  'Confined Space', 'Slinger/Signaller',
 ];
 
 interface EditOperatorModalProps {
@@ -53,6 +59,34 @@ export function EditOperatorModal({
 
   const isControlled = controlledIsOpen !== undefined;
   const isOpen = isControlled ? controlledIsOpen : internalOpen;
+
+  const initialTickets = (operator.tickets || []).map((t) => t.ticket_type);
+  const [selectedTickets, setSelectedTickets] = useState<TicketType[]>(initialTickets);
+  const [availableTickets, setAvailableTickets] = useState<TicketType[]>(() => {
+    const combined = new Set<TicketType>([...TICKET_TYPES, ...initialTickets]);
+    return Array.from(combined);
+  });
+  const [customTicketInput, setCustomTicketInput] = useState('');
+
+  const handleToggleTicket = (ticket: TicketType) => {
+    if (selectedTickets.includes(ticket)) {
+      setSelectedTickets(selectedTickets.filter((t) => t !== ticket));
+    } else {
+      setSelectedTickets([...selectedTickets, ticket]);
+    }
+  };
+
+  const handleAddCustomTicket = () => {
+    const trimmed = customTicketInput.trim();
+    if (!trimmed) return;
+    if (!availableTickets.includes(trimmed)) {
+      setAvailableTickets([...availableTickets, trimmed]);
+    }
+    if (!selectedTickets.includes(trimmed)) {
+      setSelectedTickets([...selectedTickets, trimmed]);
+    }
+    setCustomTicketInput('');
+  };
 
   const handleClose = () => {
     if (isControlled && controlledOnClose) {
@@ -269,6 +303,59 @@ export function EditOperatorModal({
                         className="w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 text-xs text-slate-900 focus:border-slate-900 focus:bg-white focus:outline-none transition-colors"
                       />
                     </div>
+                  </div>
+                </div>
+
+                {/* Tickets & Certifications */}
+                <div className="pt-3 border-t border-slate-100 space-y-2">
+                  <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                    <Award className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Tickets & Certifications</span>
+                  </h3>
+                  <div className="flex flex-wrap gap-2 p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                    {availableTickets.map((t) => {
+                      const isSelected = selectedTickets.includes(t);
+                      return (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => handleToggleTicket(t)}
+                          className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all ${
+                            isSelected
+                              ? 'bg-[#6366f1] text-white shadow-sm'
+                              : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                          }`}
+                        >
+                          {t}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {selectedTickets.map((t) => (
+                    <input key={t} type="hidden" name="tickets" value={t} />
+                  ))}
+
+                  <div className="flex items-center gap-2 mt-2">
+                    <input
+                      type="text"
+                      value={customTicketInput}
+                      onChange={(e) => setCustomTicketInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddCustomTicket();
+                        }
+                      }}
+                      placeholder="Add custom ticket (e.g. Loading Shovel, Hiab, SSSTS)"
+                      className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:border-indigo-500 focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddCustomTicket}
+                      className="px-3 py-1.5 rounded-xl bg-slate-900 text-white text-xs font-semibold hover:bg-slate-800 transition-colors shrink-0"
+                    >
+                      + Add Ticket
+                    </button>
                   </div>
                 </div>
 

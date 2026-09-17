@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition, useMemo } from 'react';
-import { Clock, X, AlertCircle } from 'lucide-react';
+import { Clock, X, AlertCircle, Calendar } from 'lucide-react';
 import { Operator, Job } from '@/types/database';
 import { logTimesheetAction } from '@/lib/actions';
 
@@ -28,6 +28,9 @@ export function QuickLogHoursModal({
 
   const [selectedOperatorId, setSelectedOperatorId] = useState<string>(defaultOperatorId || (operators[0]?.id ?? ''));
   const [selectedJobId, setSelectedJobId] = useState<string>(defaultJobId || '');
+  const [entryMode, setEntryMode] = useState<'single' | 'range'>('single');
+  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
 
   // Calculate available jobs for the selected operator
   const availableJobsForOperator = useMemo(() => {
@@ -211,35 +214,119 @@ export function QuickLogHoursModal({
                 )}
               </div>
 
-              {/* Date & Hours */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                    Date Worked *
+              {/* Mode Toggle: Single Day vs Date Range / Weekly */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Timesheet Period Type
                   </label>
-                  <input
-                    type="date"
-                    name="date"
-                    defaultValue={new Date().toISOString().split('T')[0]}
-                    required
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-800 focus:border-slate-400 focus:bg-white focus:outline-none transition-colors"
-                  />
+                  <div className="flex items-center gap-1 p-0.5 rounded-lg bg-slate-100 border border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => setEntryMode('single')}
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all ${
+                        entryMode === 'single'
+                          ? 'bg-white text-slate-900 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-900'
+                      }`}
+                    >
+                      Single Day
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEntryMode('range')}
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all ${
+                        entryMode === 'range'
+                          ? 'bg-white text-slate-900 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-900'
+                      }`}
+                    >
+                      Date Range / Weekly
+                    </button>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                    Hours * (e.g. 8.5)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.5"
-                    min="0.5"
-                    max="24"
-                    name="hours"
-                    defaultValue="8.0"
-                    required
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-800 focus:border-slate-400 focus:bg-white focus:outline-none transition-colors"
-                  />
-                </div>
+
+                {entryMode === 'single' ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                        Date Worked *
+                      </label>
+                      <input
+                        type="date"
+                        name="date"
+                        defaultValue={startDate}
+                        required
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-800 focus:border-slate-400 focus:bg-white focus:outline-none transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                        Hours * (e.g. 8.5)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="0.5"
+                        max="24"
+                        name="hours"
+                        defaultValue="8.0"
+                        required
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-800 focus:border-slate-400 focus:bg-white focus:outline-none transition-colors"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                          Start Date (From) *
+                        </label>
+                        <input
+                          type="date"
+                          name="date"
+                          value={startDate}
+                          onChange={(e) => setStartDate(e.target.value)}
+                          required
+                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-800 focus:border-slate-400 focus:bg-white focus:outline-none transition-colors"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                          End Date (To) *
+                        </label>
+                        <input
+                          type="date"
+                          name="end_date"
+                          value={endDate}
+                          min={startDate}
+                          onChange={(e) => setEndDate(e.target.value)}
+                          required
+                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-800 focus:border-slate-400 focus:bg-white focus:outline-none transition-colors"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                        Total Weekly / Period Hours * (e.g. 32.0 or 40.0)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="0.5"
+                        max="168"
+                        name="hours"
+                        defaultValue="40.0"
+                        required
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-800 focus:border-slate-400 focus:bg-white focus:outline-none transition-colors"
+                      />
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        Logs total hours for the selected period ({startDate} to {endDate})
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Rate Applied Snapshot Notice */}

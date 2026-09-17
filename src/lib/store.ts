@@ -120,39 +120,74 @@ export async function syncFromSupabase(force = false): Promise<boolean> {
     });
 
     if (Array.isArray(jobsRes.data)) {
-      jobsStore = jobsRes.data.map((j: any) => ({
-        id: j.id,
-        client: j.client,
-        site_name: j.site_name,
-        postcode: j.postcode,
-        start_date: j.start_date,
-        end_date: j.end_date,
-        required_operator_count: Number(j.required_operator_count || 1),
-        required_role: j.required_role,
-        pay_rate: Number(j.pay_rate || 0),
-        charge_rate: Number(j.charge_rate || 0),
-        site_contact_name: j.site_contact_name,
-        site_contact_phone: j.site_contact_phone,
-        notes: j.notes,
-        status: j.status,
-        is_archived: Boolean(j.is_archived),
-        created_at: j.created_at,
-        updated_at: j.updated_at,
-        assignments: asgsByJob[j.id] || [],
-      }));
+      jobsStore = jobsRes.data.map((j: any) => {
+        let cleanNotes = j.notes;
+        let roleRequirements = j.role_requirements || null;
+        if (cleanNotes && cleanNotes.includes('<!--ROLES:')) {
+          try {
+            const match = cleanNotes.match(/<!--ROLES:(.*?)-->/);
+            if (match && match[1]) {
+              roleRequirements = JSON.parse(match[1]);
+              cleanNotes = cleanNotes.replace(/<!--ROLES:(.*?)-->/, '').trim();
+            }
+          } catch (e) {
+            // ignore
+          }
+        }
+        if (!roleRequirements && j.required_role) {
+          roleRequirements = [
+            {
+              role: j.required_role,
+              count: Number(j.required_operator_count || 1),
+              start_date: j.start_date,
+            },
+          ];
+        }
+
+        return {
+          id: j.id,
+          client: j.client,
+          site_name: j.site_name,
+          postcode: j.postcode,
+          start_date: j.start_date,
+          end_date: j.end_date,
+          required_operator_count: Number(j.required_operator_count || 1),
+          required_role: j.required_role,
+          role_requirements: roleRequirements,
+          pay_rate: Number(j.pay_rate || 0),
+          charge_rate: Number(j.charge_rate || 0),
+          site_contact_name: j.site_contact_name,
+          site_contact_phone: j.site_contact_phone,
+          notes: cleanNotes,
+          status: j.status,
+          is_archived: Boolean(j.is_archived),
+          created_at: j.created_at,
+          updated_at: j.updated_at,
+          assignments: asgsByJob[j.id] || [],
+        };
+      });
     }
 
     if (Array.isArray(tssRes.data)) {
       timesheetsStore = tssRes.data.map((ts: any) => {
         const op = operatorsStore.find((o) => o.id === ts.operator_id);
         const j = jobsStore.find((jb) => jb.id === ts.job_id);
+        let endDate = ts.end_date || null;
+        let cleanNotes = ts.notes;
+        if (!endDate && cleanNotes && cleanNotes.includes('[Period:')) {
+          const m = cleanNotes.match(/\[Period:\s*([\d-]+)\s+to\s+([\d-]+)\]/);
+          if (m && m[2]) {
+            endDate = m[2];
+          }
+        }
         return {
           id: ts.id,
           operator_id: ts.operator_id,
           date: ts.date,
+          end_date: endDate,
           hours: Number(ts.hours || 0),
           job_id: ts.job_id,
-          notes: ts.notes,
+          notes: cleanNotes,
           rate_applied: Number(ts.rate_applied || 0),
           created_at: ts.created_at,
           updated_at: ts.updated_at,
@@ -420,9 +455,19 @@ export const DataStore = {
       throw new Error('Rates must be positive and required count must be greater than 0');
     }
     const id = data.id || crypto.randomUUID();
+    const roleRequirements = data.role_requirements && data.role_requirements.length > 0
+      ? data.role_requirements
+      : [
+          {
+            role: data.required_role,
+            count: data.required_operator_count,
+            start_date: data.start_date,
+          },
+        ];
     const newJob: Job = {
       id,
       ...data,
+      role_requirements: roleRequirements,
       status: 'Draft',
       is_archived: false,
       assignments: [],
@@ -457,7 +502,7 @@ export const DataStore = {
   },
 
   // JOB ASSIGNMENTS & STATUS LIFECYCLE
-  assignOperatorToJob(jobId: string, operatorId: string): Job {
+  assignOperatorToJob(jobId: string, operatorId: string, assignedRole?: OperatorRole, startDate?: string | null): Job {
     const job = jobsStore.find((j) => j.id === jobId);
     if (!job) throw new Error('Job not found');
 
@@ -476,6 +521,8 @@ export const DataStore = {
       operator_id: operatorId,
       assigned_at: new Date().toISOString(),
       unassigned_at: null,
+      assigned_role: assignedRole || op.primary_role,
+      start_date: startDate || job.start_date,
     };
 
     job.assignments = [...(job.assignments || []), newAssignment];
@@ -517,18 +564,29 @@ export const DataStore = {
     const job = jobsStore.find((j) => j.id === jobId);
     if (!job) return { suggested: [], override: [] };
 
-    const activeAssignedIds = new Set(
-      (job.assignments || [])
-        .filter((a) => !a.unassigned_at)
-        .map((a) => a.operator_id)
-    );
+    const activeAssignments = (job.assignments || []).filter((a) => !a.unassigned_at);
+    const activeAssignedIds = new Set(activeAssignments.map((a) => a.operator_id));
 
     const nonArchived = operatorsStore.filter((op) => !op.is_archived && !activeAssignedIds.has(op.id));
 
-    // Suggested: matching role AND availability IN (Available, Starting Soon, Working)
+    // Determine needed roles
+    const neededRoles: string[] = [];
+    if (job.role_requirements && job.role_requirements.length > 0) {
+      for (const req of job.role_requirements) {
+        const filled = activeAssignments.filter((a) => (a.assigned_role || a.operator?.primary_role) === req.role).length;
+        if (filled < req.count) {
+          neededRoles.push(req.role);
+        }
+      }
+    }
+    if (neededRoles.length === 0) {
+      neededRoles.push(job.required_role);
+    }
+
+    // Suggested: matching any needed role AND availability IN (Available, Starting Soon, Working)
     const suggested = nonArchived.filter(
       (op) =>
-        op.primary_role === job.required_role &&
+        neededRoles.includes(op.primary_role) &&
         ['Available', 'Starting Soon', 'Working'].includes(op.availability_status)
     );
 
@@ -568,11 +626,12 @@ export const DataStore = {
     operator_id: string;
     job_id?: string | null;
     date: string;
+    end_date?: string | null;
     hours: number;
     notes?: string | null;
   }): Timesheet {
-    if (data.hours <= 0 || data.hours > 24) {
-      throw new Error('Hours must be between 0.25 and 24');
+    if (data.hours <= 0 || data.hours > 168) {
+      throw new Error('Hours must be between 0.25 and 168');
     }
 
     const op = operatorsStore.find((o) => o.id === data.operator_id);
@@ -601,6 +660,7 @@ export const DataStore = {
       id: data.id || crypto.randomUUID(),
       operator_id: data.operator_id,
       date: data.date,
+      end_date: data.end_date || null,
       hours: Number(data.hours),
       job_id: data.job_id || null,
       notes: data.notes || null,

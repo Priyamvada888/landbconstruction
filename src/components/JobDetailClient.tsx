@@ -10,6 +10,7 @@ import {
   UserCheck,
   UserPlus,
   UserX,
+  Users,
   Clock,
   TrendingUp,
   AlertCircle,
@@ -17,8 +18,9 @@ import {
   FileSpreadsheet,
   Trash2,
   Edit3,
+  ChevronDown,
 } from 'lucide-react';
-import { Job, Operator, Timesheet, JobStatus, JobAssignment } from '@/types/database';
+import { Job, Operator, Timesheet, JobStatus, JobAssignment, OperatorRole } from '@/types/database';
 import {
   assignOperatorAction,
   unassignOperatorAction,
@@ -57,9 +59,16 @@ export function JobDetailClient({
   const [showOverrideList, setShowOverrideList] = useState(false);
   const [selectedOverrideId, setSelectedOverrideId] = useState<string>('');
 
+  const roleRequirements = job.role_requirements && job.role_requirements.length > 0
+    ? job.role_requirements
+    : [{ role: job.required_role, count: job.required_operator_count, start_date: job.start_date }];
+
+  const totalOpenings = roleRequirements.reduce((sum, r) => sum + (Number(r.count) || 0), 0);
   const activeAssignments = job.active_assignments || [];
   const assignedCount = activeAssignments.length;
-  const isFilled = assignedCount >= job.required_operator_count;
+  const remainingOpenings = Math.max(0, totalOpenings - assignedCount);
+  const isFilled = assignedCount >= totalOpenings;
+  const fillPercentage = totalOpenings > 0 ? Math.round((assignedCount / totalOpenings) * 100) : 0;
 
   const handleStatusChange = (newStatus: JobStatus) => {
     setError(null);
@@ -72,11 +81,11 @@ export function JobDetailClient({
     });
   };
 
-  const handleAssign = (operatorId: string) => {
+  const handleAssign = (operatorId: string, assignedRole?: OperatorRole, startDate?: string | null) => {
     setError(null);
     startTransition(async () => {
       try {
-        await assignOperatorAction(job.id, operatorId);
+        await assignOperatorAction(job.id, operatorId, assignedRole, startDate);
         setSelectedOverrideId('');
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Failed to assign operator');
@@ -121,9 +130,9 @@ export function JobDetailClient({
   };
 
   return (
-    <div className="space-y-6 text-slate-800">
+    <div className="space-y-4 sm:space-y-6 text-slate-800">
       {/* Top Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200/80 pb-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4 border-b border-slate-200/80 pb-4 sm:pb-6">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <Link href="/jobs" className="text-xs font-semibold text-slate-500 hover:text-slate-900">
@@ -190,34 +199,189 @@ export function JobDetailClient({
         </div>
       )}
 
-      {/* Financials & Key Rates Bar */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
-          <p className="text-xs font-semibold text-slate-500">Agreed Pay Rate</p>
-          <p className="text-xl font-bold text-slate-900 mt-1">£{job.pay_rate.toFixed(2)}/hr</p>
-          <p className="text-[11px] text-slate-400 mt-0.5">Paid to operator</p>
+      {/* Staffing Openings & Role Types - Mobile Structured Compact Card (< sm) */}
+      <div className="sm:hidden rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-sm space-y-3">
+        {/* 3 Compact KPI Columns */}
+        <div className="grid grid-cols-3 gap-1 divide-x divide-slate-100">
+          {/* Total */}
+          <div className="text-center px-1">
+            <div className="flex items-center justify-center gap-1 text-[11px] font-semibold text-slate-500 mb-0.5">
+              <Users className="w-3 h-3 text-indigo-600" />
+              <span>Total</span>
+            </div>
+            <p className="text-2xl font-bold text-slate-900 leading-tight">{totalOpenings}</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">Openings</p>
+          </div>
+
+          {/* Filled */}
+          <div className="text-center px-1 pl-1.5">
+            <div className="flex items-center justify-center gap-1 text-[11px] font-semibold text-slate-500 mb-0.5">
+              <UserCheck className="w-3 h-3 text-emerald-600" />
+              <span>Filled</span>
+            </div>
+            <div className="flex items-baseline justify-center gap-1">
+              <p className="text-2xl font-bold text-emerald-600 leading-tight">{assignedCount}</p>
+              <span className="text-[11px] font-semibold text-slate-400">/{totalOpenings}</span>
+            </div>
+            <div className="flex items-center justify-center gap-1 mt-1">
+              <div className="w-10 bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                <div
+                  className="bg-emerald-500 h-full rounded-full transition-all duration-500"
+                  style={{ width: `${Math.min(100, fillPercentage)}%` }}
+                />
+              </div>
+              <span className="text-[10px] font-bold text-emerald-600">{fillPercentage}%</span>
+            </div>
+          </div>
+
+          {/* Open */}
+          <div className="text-center px-1 pl-1.5">
+            <div className="flex items-center justify-center gap-1 text-[11px] font-semibold text-slate-500 mb-0.5">
+              <AlertCircle className={`w-3 h-3 ${remainingOpenings > 0 ? 'text-amber-500' : 'text-slate-400'}`} />
+              <span>Open</span>
+            </div>
+            <p className={`text-2xl font-bold leading-tight ${remainingOpenings > 0 ? 'text-amber-600' : 'text-slate-700'}`}>
+              {remainingOpenings}
+            </p>
+            <span
+              className={`inline-block text-[10px] font-bold px-1.5 py-0.2 rounded mt-0.5 ${
+                remainingOpenings === 0
+                  ? 'bg-emerald-50 text-emerald-700'
+                  : 'bg-amber-50 text-amber-700'
+              }`}
+            >
+              {remainingOpenings === 0 ? 'Full' : `${remainingOpenings} left`}
+            </span>
+          </div>
         </div>
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
-          <p className="text-xs font-semibold text-slate-500">Charge Rate</p>
-          <p className="text-xl font-bold text-indigo-600 mt-1">£{job.charge_rate.toFixed(2)}/hr</p>
-          <p className="text-[11px] text-slate-400 mt-0.5">Billed to {job.client}</p>
+
+        {/* Role Types Breakdown - Dropdown */}
+        {roleRequirements.length > 0 && (
+          <div className="pt-2.5 border-t border-slate-100 flex items-center gap-2">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex-shrink-0">Roles:</span>
+            <div className="relative flex-1 min-w-0">
+              <select
+                className="w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 py-1.5 pl-2.5 pr-7 text-xs font-semibold text-slate-700 focus:border-indigo-500 focus:bg-white focus:outline-none transition-colors"
+              >
+                {roleRequirements.map((r, i) => {
+                  const roleFilled = activeAssignments.filter(
+                    (a) => (a.assigned_role || a.operator?.primary_role) === r.role
+                  ).length;
+                  const statusText = roleFilled >= r.count ? 'Filled' : `${roleFilled}/${r.count} filled`;
+                  return (
+                    <option key={i} value={r.role}>
+                      {r.count}x {r.role} ({statusText})
+                    </option>
+                  );
+                })}
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400">
+                <ChevronDown className="w-3.5 h-3.5" />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Staffing Openings & Role Types - Tablet / Desktop Grid (>= sm) */}
+      <div className="hidden sm:grid sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        {/* Total Openings */}
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-slate-500">Total Openings</p>
+            <div className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600">
+              <Users className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="mt-2">
+            <p className="text-2xl sm:text-3xl font-bold text-slate-900">{totalOpenings}</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">Total operators required on site</p>
+          </div>
         </div>
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
-          <p className="text-xs font-semibold text-slate-500">Total Billed Hours</p>
-          <p className="text-xl font-bold text-slate-900 mt-1">{financials.totalHours.toFixed(1)} hrs</p>
-          <p className="text-[11px] text-slate-400 mt-0.5">{financials.entryCount} timesheet entries</p>
+
+        {/* Filled Openings */}
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-slate-500">Filled Openings</p>
+            <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600">
+              <UserCheck className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="mt-2">
+            <div className="flex items-baseline gap-2">
+              <p className="text-2xl sm:text-3xl font-bold text-emerald-600">{assignedCount}</p>
+              <span className="text-xs font-semibold text-slate-400">/ {totalOpenings}</span>
+            </div>
+            <div className="flex items-center gap-2 mt-1">
+              <div className="flex-1 bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                <div
+                  className="bg-emerald-500 h-full rounded-full transition-all duration-500"
+                  style={{ width: `${Math.min(100, fillPercentage)}%` }}
+                />
+              </div>
+              <span className="text-[11px] font-bold text-emerald-600">{fillPercentage}%</span>
+            </div>
+          </div>
         </div>
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
-          <p className="text-xs font-semibold text-slate-500">Total Revenue</p>
-          <p className="text-xl font-bold text-emerald-600 mt-1">{formatCurrency(financials.revenue)}</p>
-          <p className="text-[11px] text-slate-400 mt-0.5">Cost: {formatCurrency(financials.cost)}</p>
+
+        {/* Open Positions Needed */}
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-slate-500">Open Positions</p>
+            <div
+              className={`p-1.5 rounded-lg ${
+                remainingOpenings > 0 ? 'bg-amber-50 text-amber-600' : 'bg-slate-100 text-slate-400'
+              }`}
+            >
+              <AlertCircle className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="mt-2">
+            <p
+              className={`text-2xl sm:text-3xl font-bold ${
+                remainingOpenings > 0 ? 'text-amber-600' : 'text-slate-700'
+              }`}
+            >
+              {remainingOpenings}
+            </p>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              {remainingOpenings === 0 ? 'Site is fully staffed' : `${remainingOpenings} position(s) to fill`}
+            </p>
+          </div>
         </div>
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm col-span-2 lg:col-span-1">
-          <p className="text-xs font-semibold text-slate-500">Gross Margin</p>
-          <p className="text-xl font-bold text-emerald-600 mt-1">{formatCurrency(financials.margin)}</p>
-          <p className="text-[11px] font-semibold text-emerald-600 mt-0.5">
-            {financials.marginPercent.toFixed(1)}% margin
-          </p>
+
+        {/* Role Types in Site */}
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-slate-500">Required Role Types</p>
+            <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
+              {roleRequirements.length} {roleRequirements.length === 1 ? 'Role' : 'Roles'}
+            </span>
+          </div>
+          <div className="mt-2 space-y-1 max-h-24 overflow-y-auto pr-1">
+            {roleRequirements.map((r, i) => {
+              const roleFilled = activeAssignments.filter(
+                (a) => (a.assigned_role || a.operator?.primary_role) === r.role
+              ).length;
+              const roleComplete = roleFilled >= r.count;
+              return (
+                <div key={i} className="flex items-center justify-between text-xs py-0.5 border-b border-slate-50 last:border-0">
+                  <span className="font-semibold text-slate-800 truncate" title={r.role}>
+                    {r.count}x {r.role}
+                  </span>
+                  <span
+                    className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                      roleComplete
+                        ? 'bg-emerald-50 text-emerald-700'
+                        : 'bg-amber-50 text-amber-700'
+                    }`}
+                  >
+                    {roleFilled}/{r.count}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
 
@@ -233,9 +397,13 @@ export function JobDetailClient({
                   <span>Current Operator Placements</span>
                 </h2>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Required Role: <strong className="text-slate-800">{job.required_role}</strong> •{' '}
+                  Requirements:{' '}
+                  <strong className="text-slate-800">
+                    {roleRequirements.map((r) => `${r.count}x ${r.role}${r.start_date ? ` (${r.start_date})` : ''}`).join(' • ')}
+                  </strong>{' '}
+                  •{' '}
                   <span className={isFilled ? 'text-emerald-600 font-bold' : 'text-amber-600 font-bold'}>
-                    {assignedCount} of {job.required_operator_count} filled
+                    {assignedCount} of {totalOpenings} filled
                   </span>
                 </p>
               </div>
@@ -271,15 +439,17 @@ export function JobDetailClient({
                             {op.name}
                           </Link>
                           <p className="text-xs text-slate-500">
-                            {op.primary_role} • {op.experience_years} yrs exp • {op.location || 'UK'}
+                            Role: <strong className="text-slate-800">{asg.assigned_role || op.primary_role}</strong> • {op.experience_years} yrs exp • {op.location || 'UK'}
                           </p>
-                          <div className="flex items-center gap-2 mt-1">
+                          <div className="flex flex-wrap items-center gap-2 mt-1">
                             <span className="text-[10px] px-2 py-0.5 rounded bg-slate-200/70 text-slate-700 font-mono">
                               Assigned {formatRelativeTime(asg.assigned_at)}
                             </span>
-                            <span className="text-[10px] text-slate-700 font-semibold">
-                              £{job.pay_rate.toFixed(2)}/hr rate
-                            </span>
+                            {asg.start_date && (
+                              <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 font-medium">
+                                Start: {asg.start_date}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -308,7 +478,7 @@ export function JobDetailClient({
                   <span>Suggested Candidates ({suggestedCandidates.length})</span>
                 </h2>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Matches role: <strong>{job.required_role}</strong> and availability status is Available,
+                  Matches needed site role(s) ({roleRequirements.map((r) => r.role).join(', ')}) and availability status is Available,
                   Starting Soon, or Working.
                 </p>
               </div>
@@ -355,7 +525,10 @@ export function JobDetailClient({
                     </div>
 
                     <button
-                      onClick={() => handleAssign(cand.id)}
+                      onClick={() => {
+                        const matchingReq = roleRequirements.find((r) => r.role === cand.primary_role);
+                        handleAssign(cand.id, matchingReq?.role || cand.primary_role, matchingReq?.start_date || job.start_date);
+                      }}
                       disabled={isPending}
                       className="w-full mt-1 inline-flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold hover:bg-emerald-100 transition-colors"
                     >
@@ -398,7 +571,9 @@ export function JobDetailClient({
                   <button
                     onClick={() => {
                       if (!selectedOverrideId) return;
-                      handleAssign(selectedOverrideId);
+                      const selectedOp = allOperators.find((o) => o.id === selectedOverrideId);
+                      const matchingReq = roleRequirements.find((r) => r.role === selectedOp?.primary_role);
+                      handleAssign(selectedOverrideId, matchingReq?.role || selectedOp?.primary_role, matchingReq?.start_date || job.start_date);
                     }}
                     disabled={!selectedOverrideId || isPending}
                     className="px-4 py-2 rounded-xl bg-slate-900 text-white font-bold text-xs hover:bg-slate-800 disabled:opacity-50 transition-colors shrink-0"
