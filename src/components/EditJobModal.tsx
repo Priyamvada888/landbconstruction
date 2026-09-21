@@ -50,20 +50,20 @@ export function EditJobModal({
     ? job.role_requirements.map((r, i) => ({
         id: `${i}-${Date.now()}`,
         role: r.role,
-        count: r.count,
+        countStr: String(r.count ?? 1),
         start_date: r.start_date || job.start_date || new Date().toISOString().split('T')[0],
       }))
     : [
         {
           id: '1',
           role: job.required_role || 'ADT Operator',
-          count: job.required_operator_count || 1,
+          countStr: String(job.required_operator_count || 1),
           start_date: job.start_date || new Date().toISOString().split('T')[0],
         },
       ];
 
   const [roleRows, setRoleRows] = useState(initialRoleRows);
-  const totalHeadcount = roleRows.reduce((acc, r) => acc + (Number(r.count) || 0), 0);
+  const totalHeadcount = roleRows.reduce((acc, r) => acc + (parseInt(r.countStr) || 0), 0);
 
   const handleAddRoleRow = () => {
     setRoleRows((prev) => [
@@ -71,7 +71,7 @@ export function EditJobModal({
       {
         id: Math.random().toString(),
         role: 'Excavator Operator',
-        count: 1,
+        countStr: '1',
         start_date: job.start_date || new Date().toISOString().split('T')[0],
       },
     ]);
@@ -82,7 +82,7 @@ export function EditJobModal({
     setRoleRows((prev) => prev.filter((r) => r.id !== id));
   };
 
-  const handleUpdateRoleRow = (id: string, field: 'role' | 'count' | 'start_date', value: any) => {
+  const handleUpdateRoleRow = (id: string, field: 'role' | 'countStr' | 'start_date', value: string) => {
     setRoleRows((prev) => prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)));
   };
 
@@ -102,7 +102,7 @@ export function EditJobModal({
 
     const rolesPayload = roleRows.map((r) => ({
       role: r.role,
-      count: Number(r.count) || 1,
+      count: parseInt(r.countStr) || 0,
       start_date: r.start_date,
     }));
     formData.set('role_requirements', JSON.stringify(rolesPayload));
@@ -259,7 +259,7 @@ export function EditJobModal({
                             <label className="block text-[10px] text-slate-500 mb-0.5">Required Role</label>
                             <select
                               value={row.role}
-                              onChange={(e) => handleUpdateRoleRow(row.id, 'role', e.target.value as OperatorRole)}
+                              onChange={(e) => handleUpdateRoleRow(row.id, 'role', e.target.value)}
                               className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 focus:border-slate-900 focus:outline-none"
                             >
                               {ROLES.map((r) => (
@@ -271,9 +271,14 @@ export function EditJobModal({
                             <label className="block text-[10px] text-slate-500 mb-0.5">Quantity</label>
                             <input
                               type="number"
-                              min="1"
-                              value={row.count}
-                              onChange={(e) => handleUpdateRoleRow(row.id, 'count', Math.max(1, parseInt(e.target.value) || 1))}
+                              min="0"
+                              value={row.countStr}
+                              onChange={(e) => handleUpdateRoleRow(row.id, 'countStr', e.target.value)}
+                              onBlur={(e) => {
+                                if (e.target.value === '' || e.target.value === '-') {
+                                  handleUpdateRoleRow(row.id, 'countStr', '0');
+                                }
+                              }}
                               className="w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus:border-slate-900 focus:outline-none"
                             />
                           </div>

@@ -93,6 +93,7 @@ export interface Operator {
   primary_role: OperatorRole;
   location: string | null;
   address?: string | null;
+  postcode?: string | null;
   ni_number?: string | null;
   utr_number?: string | null;
   experience_years: number;

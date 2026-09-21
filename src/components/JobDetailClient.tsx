@@ -28,6 +28,7 @@ import {
   deleteTimesheetAction,
 } from '@/lib/actions';
 import { QuickLogHoursModal } from '@/components/QuickLogHoursModal';
+import { EditJobModal } from '@/components/EditJobModal';
 import { formatCurrency, formatRelativeTime } from '@/lib/utils';
 
 interface JobDetailClientProps {
@@ -183,6 +184,11 @@ export function JobDetailClient({
             </select>
           </div>
 
+          <EditJobModal
+            job={job}
+            triggerLabel="Edit Site"
+            triggerClassName="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors shadow-sm"
+          />
           <QuickLogHoursModal
             operators={allOperators}
             jobs={[job]}
