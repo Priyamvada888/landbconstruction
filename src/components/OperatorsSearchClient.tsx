@@ -2,11 +2,12 @@
 
 import { useState, useMemo, useTransition } from 'react';
 import Link from 'next/link';
-import { Search, X, ArrowUpDown } from 'lucide-react';
+import { Search, X, ArrowUpDown, Award } from 'lucide-react';
 import { Operator, AvailabilityStatus, UserRole } from '@/types/database';
 import { OperatorRowActions, OperatorCardActions } from '@/components/OperatorRowActions';
 
 const STATUS_TABS = ['Active', 'Available', 'Working', 'Starting Soon', 'On Leave', 'All'];
+const QUICK_TICKET_PILLS = ['All', 'Dozer', 'Roller', 'ADT', 'Excavator 360', 'Dumper', 'Telehandler', 'CPCS', 'NPORS', 'CSCS'];
 
 const STATUS_COLOR: Record<string, string> = {
   Available: 'text-emerald-600',
@@ -192,6 +193,7 @@ async function resolveOperatorCoordinates(operators: Operator[]): Promise<Record
 export function OperatorsSearchClient({ operators, currentRole }: OperatorsSearchClientProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('Active');
+  const [ticketFilter, setTicketFilter] = useState('All');
 
   // Postcode radius search state (Iconless)
   const [postcodeInput, setPostcodeInput] = useState('');
@@ -204,17 +206,30 @@ export function OperatorsSearchClient({ operators, currentRole }: OperatorsSearc
   // Filtered and sorted operators
   const filtered = useMemo(() => {
     let list = operators.filter((op) => {
-      const q = searchTerm.toLowerCase();
-      const matchesSearch =
-        !q ||
-        op.name.toLowerCase().includes(q) ||
-        (op.phone && op.phone.toLowerCase().includes(q)) ||
-        (op.primary_role && op.primary_role.toLowerCase().includes(q)) ||
-        (op.current_company && op.current_company.toLowerCase().includes(q)) ||
-        (op.location && op.location.toLowerCase().includes(q)) ||
-        (op.postcode && op.postcode.toLowerCase().includes(q));
+      const q = searchTerm.toLowerCase().trim();
+      if (q) {
+        const terms = q.split(/\s+/).filter(Boolean);
+        const matchesAllTerms = terms.every((term) =>
+          op.name.toLowerCase().includes(term) ||
+          (op.phone && op.phone.toLowerCase().includes(term)) ||
+          (op.primary_role && op.primary_role.toLowerCase().includes(term)) ||
+          (op.current_company && op.current_company.toLowerCase().includes(term)) ||
+          (op.location && op.location.toLowerCase().includes(term)) ||
+          (op.address && op.address.toLowerCase().includes(term)) ||
+          (op.postcode && op.postcode.toLowerCase().includes(term)) ||
+          (op.tickets && op.tickets.some((t) => t.ticket_type.toLowerCase().includes(term)))
+        );
+        if (!matchesAllTerms) return false;
+      }
 
-      if (!matchesSearch) return false;
+      // Ticket filter pill
+      if (ticketFilter !== 'All') {
+        const tf = ticketFilter.toLowerCase();
+        const hasTicket =
+          (op.tickets && op.tickets.some((t) => t.ticket_type.toLowerCase().includes(tf))) ||
+          op.primary_role.toLowerCase().includes(tf);
+        if (!hasTicket) return false;
+      }
 
       if (statusFilter === 'Active') {
         if (op.availability_status === 'Do Not Use') return false;
@@ -243,7 +258,7 @@ export function OperatorsSearchClient({ operators, currentRole }: OperatorsSearc
     }
 
     return list;
-  }, [operators, searchTerm, statusFilter, activeRadiusSearch, operatorDistances]);
+  }, [operators, searchTerm, statusFilter, ticketFilter, activeRadiusSearch, operatorDistances]);
 
   const handlePostcodeSearch = () => {
     const pc = postcodeInput.trim();
@@ -342,7 +357,7 @@ export function OperatorsSearchClient({ operators, currentRole }: OperatorsSearc
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
               type="text"
-              placeholder="Search operators, phone, location..."
+              placeholder="Search by ticket (e.g. Dozer, Roller, ADT), name, location..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3.5 py-2 text-xs text-slate-900 placeholder-slate-400 focus:border-slate-900 focus:outline-none transition-colors shadow-sm"
@@ -357,6 +372,40 @@ export function OperatorsSearchClient({ operators, currentRole }: OperatorsSearc
             )}
           </div>
         </div>
+      </div>
+
+      {/* Quick Ticket Filter Pills */}
+      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth py-0.5 -mx-1 px-1">
+        <span className="text-[11px] font-bold text-slate-400 flex items-center gap-1 shrink-0 mr-1">
+          <Award className="w-3 h-3 text-indigo-500" />
+          <span>Ticket:</span>
+        </span>
+        {QUICK_TICKET_PILLS.map((pill) => {
+          const active = ticketFilter === pill;
+          return (
+            <button
+              key={pill}
+              type="button"
+              onClick={() => setTicketFilter(pill)}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all shrink-0 active:scale-95 ${
+                active
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'bg-slate-100/90 text-slate-600 hover:bg-slate-200/70 hover:text-slate-900 border border-slate-200/60'
+              }`}
+            >
+              {pill}
+            </button>
+          );
+        })}
+        {ticketFilter !== 'All' && (
+          <button
+            type="button"
+            onClick={() => setTicketFilter('All')}
+            className="text-[11px] font-semibold text-rose-500 hover:text-rose-700 ml-1 underline"
+          >
+            Clear ticket
+          </button>
+        )}
       </div>
 
       {/* Postcode Radius Search — Iconless */}
@@ -474,6 +523,28 @@ export function OperatorsSearchClient({ operators, currentRole }: OperatorsSearc
                     {op.availability_status}
                   </span>
                 </div>
+
+                {/* Mobile Ticket Badges */}
+                {op.tickets && op.tickets.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-2.5 pt-2 border-t border-slate-100">
+                    {op.tickets.map((t) => {
+                      const isMatched = searchTerm && t.ticket_type.toLowerCase().includes(searchTerm.toLowerCase().trim());
+                      return (
+                        <span
+                          key={t.id || t.ticket_type}
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border ${
+                            isMatched
+                              ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                              : 'bg-indigo-50 text-indigo-700 border-indigo-100'
+                          }`}
+                        >
+                          {t.ticket_type}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between text-xs text-slate-400 mt-2">
                   <span>Pay: £{Number(op.hourly_rate ?? 0).toFixed(2)}/hr</span>
                 </div>
@@ -512,6 +583,12 @@ export function OperatorsSearchClient({ operators, currentRole }: OperatorsSearc
                   </div>
                 </th>
                 <th className="px-4 py-3.5">
+                  <div className="flex items-center gap-1.5">
+                    <Award className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>Tickets &amp; Certifications</span>
+                  </div>
+                </th>
+                <th className="px-4 py-3.5">
                   <div className="flex items-center gap-1.5 cursor-pointer hover:text-slate-700">
                     <span>Availability Status</span>
                     <ArrowUpDown className="w-3 h-3 text-slate-400" />
@@ -523,7 +600,7 @@ export function OperatorsSearchClient({ operators, currentRole }: OperatorsSearc
             <tbody className="divide-y divide-slate-100">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-slate-400">
+                  <td colSpan={7} className="px-4 py-12 text-center text-slate-400">
                     No operators found matching your criteria.
                   </td>
                 </tr>
@@ -565,6 +642,37 @@ export function OperatorsSearchClient({ operators, currentRole }: OperatorsSearc
                       </td>
                       <td className="px-4 py-4 text-slate-600 font-medium whitespace-nowrap">{dateStr}</td>
                       <td className="px-4 py-4 font-semibold text-slate-800">{op.primary_role}</td>
+                      <td className="px-4 py-4">
+                        {(op.tickets && op.tickets.length > 0) ? (
+                          <div className="flex flex-wrap gap-1 max-w-xs">
+                            {op.tickets.slice(0, 3).map((t) => {
+                              const isMatched = searchTerm && t.ticket_type.toLowerCase().includes(searchTerm.toLowerCase().trim());
+                              return (
+                                <span
+                                  key={t.id || t.ticket_type}
+                                  className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border ${
+                                    isMatched
+                                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                                      : 'bg-indigo-50/80 text-indigo-700 border-indigo-200/70'
+                                  }`}
+                                >
+                                  {t.ticket_type}
+                                </span>
+                              );
+                            })}
+                            {op.tickets.length > 3 && (
+                              <span
+                                className="px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-500 border border-slate-200"
+                                title={op.tickets.slice(3).map((t) => t.ticket_type).join(', ')}
+                              >
+                                +{op.tickets.length - 3}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-slate-400 italic">None</span>
+                        )}
+                      </td>
                       <td className="px-4 py-4">
                         <span className={`text-xs font-semibold ${STATUS_COLOR[op.availability_status] || 'text-slate-500'}`}>
                           {op.availability_status}

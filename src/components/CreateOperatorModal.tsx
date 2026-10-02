@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition, useRef, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { Plus, X, HardHat, CreditCard, ShieldCheck, Upload, FileText, Image as ImageIcon, Trash2 } from 'lucide-react';
 import { OperatorRole, AvailabilityStatus, TicketType, UserRole, DocumentType } from '@/types/database';
 import { createOperatorAction, uploadOperatorDocumentAction } from '@/lib/actions';
@@ -40,6 +41,7 @@ interface CreateOperatorModalProps {
 }
 
 export function CreateOperatorModal({ currentRole }: CreateOperatorModalProps) {
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -129,6 +131,7 @@ export function CreateOperatorModal({ currentRole }: CreateOperatorModalProps) {
         form.reset();
         setPendingDocs([]);
         setSelectedTickets(['CSCS']);
+        router.refresh();
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Failed to register operator');
       }

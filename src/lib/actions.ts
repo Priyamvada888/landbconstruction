@@ -284,6 +284,24 @@ export async function unassignOperatorAction(jobId: string, operatorId: string) 
   return { success: true, job: updatedJob };
 }
 
+// Standard tickets matching the PostgreSQL ticket_type enum in Supabase
+export const SUPABASE_ENUM_TICKETS = new Set([
+  'Excavator 180',
+  'Excavator 360',
+  'ADT',
+  'Dozer',
+  'Dumper',
+  'Roller',
+  'Telehandler',
+  'CPCS',
+  'NPORS',
+  'EUSR',
+  'CSCS',
+  'First Aid',
+  'Confined Space',
+  'Slinger/Signaller',
+]);
+
 // OPERATORS ACTIONS
 export async function createOperatorAction(formData: FormData) {
   const name = formData.get('name')?.toString().trim();
@@ -325,9 +343,14 @@ export async function createOperatorAction(formData: FormData) {
 
   const opId = crypto.randomUUID();
 
-  // Parse tickets
-  const ticketEntries = formData.getAll('tickets') as TicketType[];
-  const tickets = ticketEntries.map((t, index) => ({
+  // Parse tickets deduplicated
+  const rawTicketEntries = Array.from(new Set(
+    formData.getAll('tickets')
+      .map((t) => t.toString().trim())
+      .filter(Boolean)
+  )) as TicketType[];
+
+  const tickets = rawTicketEntries.map((t, index) => ({
     id: `ticket-${Date.now()}-${index}`,
     operator_id: opId,
     ticket_type: t,
@@ -361,13 +384,32 @@ export async function createOperatorAction(formData: FormData) {
     if (dbErr) {
       console.error('Supabase operator insert error:', dbErr);
     } else if (tickets.length > 0) {
-      await supabase.from('operator_tickets').insert(
-        tickets.map((tk) => ({
-          operator_id: opId,
-          ticket_type: tk.ticket_type,
-          expiry_date: tk.expiry_date || null,
-        }))
-      );
+      const enumTickets = tickets.filter((tk) => SUPABASE_ENUM_TICKETS.has(tk.ticket_type));
+      const customTickets = tickets.filter((tk) => !SUPABASE_ENUM_TICKETS.has(tk.ticket_type));
+
+      if (enumTickets.length > 0) {
+        const { error: tErr } = await supabase.from('operator_tickets').insert(
+          enumTickets.map((tk) => ({
+            operator_id: opId,
+            ticket_type: tk.ticket_type,
+            expiry_date: tk.expiry_date || null,
+          }))
+        );
+        if (tErr) console.error('Supabase operator tickets insert error:', tErr);
+      }
+
+      if (customTickets.length > 0) {
+        const { error: cErr } = await supabase.from('operator_documents').insert(
+          customTickets.map((tk) => ({
+            operator_id: opId,
+            name: `Custom Ticket: ${tk.ticket_type}`,
+            document_type: 'ticket',
+            file_url: `custom_ticket://${encodeURIComponent(tk.ticket_type)}`,
+            file_type: 'custom_ticket',
+          }))
+        );
+        if (cErr) console.error('Supabase custom tickets insert error:', cErr);
+      }
     }
   }
 
@@ -438,11 +480,15 @@ export async function updateOperatorAction(id: string, formData: FormData) {
     if (formData.has('bank_sort_code')) updates.bank_sort_code = formData.get('bank_sort_code')?.toString().trim() || null;
   }
 
-  const rawTickets = formData.getAll('tickets').map((t) => t.toString());
+  const rawTickets = Array.from(new Set(
+    formData.getAll('tickets')
+      .map((t) => t.toString().trim())
+      .filter(Boolean)
+  ));
   const tickets = rawTickets.map((t) => ({
     id: crypto.randomUUID(),
     operator_id: id,
-    ticket_type: t,
+    ticket_type: t as TicketType,
     expiry_date: null,
   }));
   if (formData.has('tickets') || rawTickets.length > 0) {
@@ -456,15 +502,35 @@ export async function updateOperatorAction(id: string, formData: FormData) {
     if (dbErr) console.error('Supabase operator update error:', dbErr);
 
     if (formData.has('tickets') || rawTickets.length > 0) {
+      // Clean up previous operator_tickets and custom ticket documents
       await supabase.from('operator_tickets').delete().eq('operator_id', id);
-      if (tickets.length > 0) {
-        await supabase.from('operator_tickets').insert(
-          tickets.map((tk) => ({
+      await supabase.from('operator_documents').delete().eq('operator_id', id).eq('file_type', 'custom_ticket');
+
+      const enumTickets = tickets.filter((tk) => SUPABASE_ENUM_TICKETS.has(tk.ticket_type));
+      const customTickets = tickets.filter((tk) => !SUPABASE_ENUM_TICKETS.has(tk.ticket_type));
+
+      if (enumTickets.length > 0) {
+        const { error: tErr } = await supabase.from('operator_tickets').insert(
+          enumTickets.map((tk) => ({
             operator_id: id,
             ticket_type: tk.ticket_type,
             expiry_date: null,
           }))
         );
+        if (tErr) console.error('Supabase operator tickets update error:', tErr);
+      }
+
+      if (customTickets.length > 0) {
+        const { error: cErr } = await supabase.from('operator_documents').insert(
+          customTickets.map((tk) => ({
+            operator_id: id,
+            name: `Custom Ticket: ${tk.ticket_type}`,
+            document_type: 'ticket',
+            file_url: `custom_ticket://${encodeURIComponent(tk.ticket_type)}`,
+            file_type: 'custom_ticket',
+          }))
+        );
+        if (cErr) console.error('Supabase custom tickets update error:', cErr);
       }
     }
   }
@@ -568,10 +634,72 @@ export async function deleteOperatorDocumentAction(operatorId: string, docId: st
   return { success: true };
 }
 
+export async function addOperatorTicketAction(operatorId: string, ticketType: string, expiryDate?: string | null) {
+  const trimmed = ticketType.trim();
+  if (!trimmed) throw new Error('Ticket type is required.');
+
+  const supabase = getSupabaseAdmin();
+  let ticketId = crypto.randomUUID();
+
+  if (supabase) {
+    if (SUPABASE_ENUM_TICKETS.has(trimmed)) {
+      const { data, error } = await supabase.from('operator_tickets').insert({
+        operator_id: operatorId,
+        ticket_type: trimmed,
+        expiry_date: expiryDate || null,
+      }).select().single();
+      if (error) console.error('Error adding operator ticket:', error);
+      if (data?.id) ticketId = data.id;
+    } else {
+      const { data, error } = await supabase.from('operator_documents').insert({
+        operator_id: operatorId,
+        name: `Custom Ticket: ${trimmed}`,
+        document_type: 'ticket',
+        file_url: `custom_ticket://${encodeURIComponent(trimmed)}`,
+        file_type: 'custom_ticket',
+      }).select().single();
+      if (error) console.error('Error adding custom ticket doc:', error);
+      if (data?.id) ticketId = data.id;
+    }
+  }
+
+  const op = DataStore.getOperatorById(operatorId);
+  if (op) {
+    op.tickets = op.tickets || [];
+    if (!op.tickets.some((t) => t.ticket_type.toLowerCase() === trimmed.toLowerCase())) {
+      op.tickets.push({
+        id: ticketId,
+        operator_id: operatorId,
+        ticket_type: trimmed,
+        expiry_date: expiryDate || null,
+        created_at: new Date().toISOString(),
+      });
+    }
+  }
+
+  revalidatePath(`/operators/${operatorId}`);
+  revalidatePath('/operators');
+  return { success: true, ticket: { id: ticketId, operator_id: operatorId, ticket_type: trimmed, expiry_date: expiryDate || null } };
+}
+
 export async function deleteOperatorTicketAction(operatorId: string, ticketId: string) {
   const supabase = getSupabaseAdmin();
   if (supabase) {
+    // Delete from operator_tickets (standard enum tickets)
     await supabase.from('operator_tickets').delete().eq('id', ticketId);
+    // Also delete from operator_documents if it was a custom ticket
+    await supabase.from('operator_documents').delete().eq('id', ticketId);
+
+    // Also check by ticket_type if ticketId was synthetic
+    const op = DataStore.getOperatorById(operatorId);
+    const targetTicket = op?.tickets?.find((t) => t.id === ticketId);
+    if (targetTicket) {
+      if (SUPABASE_ENUM_TICKETS.has(targetTicket.ticket_type)) {
+        await supabase.from('operator_tickets').delete().eq('operator_id', operatorId).eq('ticket_type', targetTicket.ticket_type);
+      } else {
+        await supabase.from('operator_documents').delete().eq('operator_id', operatorId).eq('file_url', `custom_ticket://${encodeURIComponent(targetTicket.ticket_type)}`);
+      }
+    }
   }
 
   // Remove from in-memory store
@@ -581,6 +709,7 @@ export async function deleteOperatorTicketAction(operatorId: string, ticketId: s
   }
 
   revalidatePath(`/operators/${operatorId}`);
+  revalidatePath('/operators');
   return { success: true };
 }
 

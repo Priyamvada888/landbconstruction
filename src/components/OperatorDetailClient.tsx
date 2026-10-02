@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition, useRef, useCallback } from 'react';
+import { useState, useTransition, useRef, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import {
   HardHat,
@@ -23,6 +23,7 @@ import {
   ZoomIn,
   ChevronLeft,
   ChevronRight,
+  Plus,
 } from 'lucide-react';
 import { Operator, Timesheet, Job, UserRole, OperatorDocument, DocumentType } from '@/types/database';
 import {
@@ -33,6 +34,7 @@ import {
   uploadOperatorDocumentAction,
   deleteOperatorDocumentAction,
   deleteOperatorTicketAction,
+  addOperatorTicketAction,
 } from '@/lib/actions';
 import { QuickLogHoursModal } from '@/components/QuickLogHoursModal';
 import { EditOperatorModal } from '@/components/EditOperatorModal';
@@ -211,7 +213,6 @@ function DocumentViewer({
   );
 }
 
-// ── Main component ─────────────────────────────────────────────────────────────
 export function OperatorDetailClient({ operator, timesheets, allJobs, hoursSummary, currentRole }: OperatorDetailClientProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -223,6 +224,17 @@ export function OperatorDetailClient({ operator, timesheets, allJobs, hoursSumma
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [docType, setDocType] = useState<DocumentType>('passport');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Quick ticket adding state
+  const [showAddTicketForm, setShowAddTicketForm] = useState(false);
+  const [newTicketType, setNewTicketType] = useState('Dozer');
+  const [customTicketName, setCustomTicketName] = useState('');
+  const [newTicketExpiry, setNewTicketExpiry] = useState('');
+
+  // Sync state if props change from server
+  useEffect(() => {
+    setLocalTickets(operator.tickets || []);
+  }, [operator.tickets]);
 
   const handleArchive = () => {
     if (!confirm('Archive this operator? Historical timesheets will be preserved.')) return;
@@ -370,6 +382,9 @@ export function OperatorDetailClient({ operator, timesheets, allJobs, hoursSumma
               currentRole={currentRole}
               triggerLabel="Edit"
               triggerClassName="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors shadow-sm"
+              onSuccess={(updated) => {
+                setLocalTickets(updated.tickets || []);
+              }}
             />
             <QuickLogHoursModal
               operators={[operator]}
@@ -437,10 +452,115 @@ export function OperatorDetailClient({ operator, timesheets, allJobs, hoursSumma
 
           {/* Tickets */}
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wide flex items-center gap-1.5 mb-3">
-              <Award className="w-3.5 h-3.5 text-indigo-500" /> Certifications
-              {localTickets.length > 0 && <span className="text-slate-400 font-normal">({localTickets.length})</span>}
-            </h2>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wide flex items-center gap-1.5">
+                <Award className="w-3.5 h-3.5 text-indigo-500" /> Certifications
+                {localTickets.length > 0 && <span className="text-slate-400 font-normal">({localTickets.length})</span>}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowAddTicketForm(!showAddTicketForm)}
+                className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>{showAddTicketForm ? 'Cancel' : 'Add Ticket'}</span>
+              </button>
+            </div>
+
+            {/* Quick Add Ticket Form */}
+            {showAddTicketForm && (
+              <div className="mb-3 p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5 animate-in fade-in duration-100">
+                <p className="text-[11px] font-bold text-slate-700">Add Ticket to Operator</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">Ticket Type</label>
+                    <select
+                      value={newTicketType}
+                      onChange={(e) => setNewTicketType(e.target.value)}
+                      className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-indigo-500"
+                    >
+                      <option value="Dozer">Dozer</option>
+                      <option value="Roller">Roller</option>
+                      <option value="ADT">ADT (Articulated Dump Truck)</option>
+                      <option value="Excavator 360">Excavator 360</option>
+                      <option value="Excavator 180">Excavator 180</option>
+                      <option value="Dumper">Dumper</option>
+                      <option value="Telehandler">Telehandler</option>
+                      <option value="Loading Shovel">Loading Shovel</option>
+                      <option value="CPCS">CPCS Card</option>
+                      <option value="NPORS">NPORS Card</option>
+                      <option value="CSCS">CSCS Card</option>
+                      <option value="EUSR">EUSR Card</option>
+                      <option value="First Aid">First Aid</option>
+                      <option value="Confined Space">Confined Space</option>
+                      <option value="Slinger/Signaller">Slinger/Signaller</option>
+                      <option value="Custom">Custom / Other Ticket...</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">Expiry Date (Optional)</label>
+                    <input
+                      type="date"
+                      value={newTicketExpiry}
+                      onChange={(e) => setNewTicketExpiry(e.target.value)}
+                      className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                {newTicketType === 'Custom' && (
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">Custom Ticket Name</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Hiab, SSSTS, SMSTS, Asbestos Awareness"
+                      value={customTicketName}
+                      onChange={(e) => setCustomTicketName(e.target.value)}
+                      className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddTicketForm(false)}
+                    className="px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-500 hover:bg-slate-200/60 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isPending || (newTicketType === 'Custom' && !customTicketName.trim())}
+                    onClick={() => {
+                      const finalTicket = newTicketType === 'Custom' ? customTicketName.trim() : newTicketType;
+                      if (!finalTicket) return;
+                      startTransition(async () => {
+                        try {
+                          const res = await addOperatorTicketAction(operator.id, finalTicket, newTicketExpiry || null);
+                          if (res.ticket) {
+                            setLocalTickets((prev) => {
+                              if (prev.some((t) => t.ticket_type.toLowerCase() === finalTicket.toLowerCase())) return prev;
+                              return [...prev, res.ticket];
+                            });
+                          }
+                          setShowAddTicketForm(false);
+                          setCustomTicketName('');
+                          setNewTicketExpiry('');
+                        } catch (err: unknown) {
+                          alert(err instanceof Error ? err.message : 'Failed to add ticket');
+                        }
+                      });
+                    }}
+                    className="px-3.5 py-1 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                  >
+                    {isPending ? 'Saving...' : 'Add Ticket'}
+                  </button>
+                </div>
+              </div>
+            )}
+
             {localTickets.length === 0 ? (
               <p className="text-xs text-slate-400">No tickets registered.</p>
             ) : (

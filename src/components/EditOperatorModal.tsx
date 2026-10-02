@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useState, useTransition, useEffect } from 'react';
 import { Edit, X, HardHat, CreditCard, Award } from 'lucide-react';
 import { Operator, OperatorRole, AvailabilityStatus, UserRole, TicketType } from '@/types/database';
 import { updateOperatorAction } from '@/lib/actions';
@@ -67,6 +67,17 @@ export function EditOperatorModal({
     return Array.from(combined);
   });
   const [customTicketInput, setCustomTicketInput] = useState('');
+
+  // Sync state whenever modal is opened or operator changes
+  useEffect(() => {
+    if (isOpen) {
+      const tickets = (operator.tickets || []).map((t) => t.ticket_type);
+      setSelectedTickets(tickets);
+      setAvailableTickets(Array.from(new Set([...TICKET_TYPES, ...tickets])));
+      setCustomTicketInput('');
+      setError(null);
+    }
+  }, [isOpen, operator]);
 
   const handleToggleTicket = (ticket: TicketType) => {
     if (selectedTickets.includes(ticket)) {

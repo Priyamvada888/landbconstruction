@@ -65,6 +65,34 @@ export async function syncFromSupabase(force = false): Promise<boolean> {
 
     const docsByOp: Record<string, OperatorDocument[]> = {};
     ((docsRes && 'data' in docsRes ? docsRes.data : []) || []).forEach((d: any) => {
+      // Check if this is a custom ticket stored in operator_documents
+      const isCustomTicket =
+        d.file_type === 'custom_ticket' ||
+        (d.file_url && d.file_url.startsWith('custom_ticket://')) ||
+        (d.name && d.name.startsWith('Custom Ticket: '));
+
+      if (isCustomTicket) {
+        let ticketName = d.name.replace(/^Custom Ticket:\s*/, '');
+        if (d.file_url && d.file_url.startsWith('custom_ticket://')) {
+          try {
+            ticketName = decodeURIComponent(d.file_url.replace('custom_ticket://', ''));
+          } catch {}
+        }
+        if (ticketName) {
+          if (!ticketsByOp[d.operator_id]) ticketsByOp[d.operator_id] = [];
+          if (!ticketsByOp[d.operator_id].some((t) => t.ticket_type.toLowerCase() === ticketName.toLowerCase())) {
+            ticketsByOp[d.operator_id].push({
+              id: d.id,
+              operator_id: d.operator_id,
+              ticket_type: ticketName,
+              expiry_date: null,
+              created_at: d.created_at,
+            });
+          }
+        }
+        return; // Don't add to documents list
+      }
+
       if (!docsByOp[d.operator_id]) docsByOp[d.operator_id] = [];
       docsByOp[d.operator_id].push({
         id: d.id,
@@ -583,12 +611,18 @@ export const DataStore = {
       neededRoles.push(job.required_role);
     }
 
-    // Suggested: matching any needed role AND availability IN (Available, Starting Soon, Working)
-    const suggested = nonArchived.filter(
-      (op) =>
-        neededRoles.includes(op.primary_role) &&
-        ['Available', 'Starting Soon', 'Working'].includes(op.availability_status)
-    );
+    // Suggested: matching any needed role (either by primary_role or by ticket held) AND availability IN (Available, Starting Soon, Working)
+    const suggested = nonArchived.filter((op) => {
+      const matchesRole = neededRoles.some((r) => {
+        if (op.primary_role === r) return true;
+        const normalizedRole = r.toLowerCase().replace(/ operator$/, '').trim();
+        return (op.tickets || []).some((t) =>
+          t.ticket_type.toLowerCase().includes(normalizedRole) ||
+          normalizedRole.includes(t.ticket_type.toLowerCase())
+        );
+      });
+      return matchesRole && ['Available', 'Starting Soon', 'Working'].includes(op.availability_status);
+    });
 
     const suggestedIds = new Set(suggested.map((s) => s.id));
     const override = nonArchived.filter((op) => !suggestedIds.has(op.id));
