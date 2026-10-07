@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useMemo, useTransition } from 'react';
+import { useState, useMemo, useTransition, useEffect, useCallback } from 'react';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { Search, X, ArrowUpDown, Award } from 'lucide-react';
 import { Operator, AvailabilityStatus, UserRole } from '@/types/database';
@@ -191,17 +192,97 @@ async function resolveOperatorCoordinates(operators: Operator[]): Promise<Record
 }
 
 export function OperatorsSearchClient({ operators, currentRole }: OperatorsSearchClientProps) {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('Active');
-  const [ticketFilter, setTicketFilter] = useState('All');
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [, startTransition] = useTransition();
 
-  // Postcode radius search state (Iconless)
-  const [postcodeInput, setPostcodeInput] = useState('');
-  const [radiusMiles, setRadiusMiles] = useState(20);
-  const [activeRadiusSearch, setActiveRadiusSearch] = useState<{ postcode: string; radiusMiles: number } | null>(null);
+  // URL-persisted filter state
+  const searchTerm = searchParams.get('q') ?? '';
+  const statusFilter = searchParams.get('status') ?? 'Active';
+  const ticketFilter = searchParams.get('ticket') ?? 'All';
+  const postcodeInput = searchParams.get('pc') ?? '';
+  const radiusMiles = Number(searchParams.get('radius') ?? '20');
+  // activeRadiusSearch is derived from URL params to trigger the display
+  const activeRadiusSearch = searchParams.get('pc')
+    ? { postcode: (searchParams.get('pc') ?? '').toUpperCase(), radiusMiles }
+    : null;
+
+  // Computed distances live only in state (async geocode result — not serialisable to URL)
   const [operatorDistances, setOperatorDistances] = useState<Record<string, number> | null>(null);
   const [postcodeError, setPostcodeError] = useState<string | null>(null);
   const [isSearchingPostcode, startPostcodeTransition] = useTransition();
+
+  // Generic URL param updater
+  const updateParams = useCallback(
+    (updates: Record<string, string | null>) => {
+      const params = new URLSearchParams(searchParams.toString());
+      Object.entries(updates).forEach(([key, val]) => {
+        if (val === null || val === '') {
+          params.delete(key);
+        } else {
+          params.set(key, val);
+        }
+      });
+      // Remove defaults to keep URL clean
+      if (params.get('status') === 'Active') params.delete('status');
+      if (params.get('ticket') === 'All') params.delete('ticket');
+      if (params.get('radius') === '20') params.delete('radius');
+      const qs = params.toString();
+      startTransition(() => {
+        router.replace(`${pathname}${qs ? `?${qs}` : ''}`, { scroll: false });
+      });
+    },
+    [router, pathname, searchParams]
+  );
+
+  const setSearchTerm = (val: string) => updateParams({ q: val || null });
+  const setStatusFilter = (val: string) => updateParams({ status: val });
+  const setTicketFilter = (val: string) => updateParams({ ticket: val });
+
+  const setPostcodeInput = (val: string) => {
+    // Just update the input field in URL (not the active search)
+    updateParams({ pc_input: val || null });
+  };
+  const setRadiusMiles = (val: number) => updateParams({ radius: String(val) });
+
+  // Controlled postcode text input (local state so typing is instant, not URL-debounced)
+  const [localPostcodeInput, setLocalPostcodeInput] = useState(postcodeInput);
+
+  // Sync local input when URL pc changes (e.g. on clear)
+  useEffect(() => {
+    setLocalPostcodeInput(searchParams.get('pc') ?? '');
+  }, [searchParams]);
+
+  // Re-run geocode when navigating back to a page that had an active postcode search
+  useEffect(() => {
+    const pc = searchParams.get('pc');
+    const radius = Number(searchParams.get('radius') ?? '20');
+    if (!pc) {
+      setOperatorDistances(null);
+      return;
+    }
+    // Run geocode to restore distances
+    (async () => {
+      try {
+        const targetCoords = await fetchCoordinates(pc);
+        if (!targetCoords) return;
+        const opCoordsMap = await resolveOperatorCoordinates(operators);
+        const distances: Record<string, number> = {};
+        for (const op of operators) {
+          const coords = opCoordsMap[op.id];
+          if (coords) {
+            distances[op.id] = distanceMiles(targetCoords.lat, targetCoords.lon, coords.lat, coords.lon);
+          }
+        }
+        setOperatorDistances(distances);
+      } catch {
+        // silently fail on back-navigation restore
+      }
+    })();
+  // Only re-run when the pc or radius URL param changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams.get('pc'), searchParams.get('radius')]);
 
   // Filtered and sorted operators
   const filtered = useMemo(() => {
@@ -261,7 +342,7 @@ export function OperatorsSearchClient({ operators, currentRole }: OperatorsSearc
   }, [operators, searchTerm, statusFilter, ticketFilter, activeRadiusSearch, operatorDistances]);
 
   const handlePostcodeSearch = () => {
-    const pc = postcodeInput.trim();
+    const pc = localPostcodeInput.trim();
     if (!pc) return;
     setPostcodeError(null);
 
@@ -287,10 +368,8 @@ export function OperatorsSearchClient({ operators, currentRole }: OperatorsSearc
         }
 
         setOperatorDistances(distances);
-        setActiveRadiusSearch({
-          postcode: pc.toUpperCase(),
-          radiusMiles,
-        });
+        // Commit to URL so back-navigation can restore
+        updateParams({ pc: pc.toUpperCase(), radius: String(radiusMiles) });
         setPostcodeError(null);
       } catch (err) {
         console.error('Postcode search error:', err);
@@ -300,10 +379,11 @@ export function OperatorsSearchClient({ operators, currentRole }: OperatorsSearc
   };
 
   const clearRadiusSearch = () => {
-    setActiveRadiusSearch(null);
     setOperatorDistances(null);
-    setPostcodeInput('');
+    setLocalPostcodeInput('');
     setPostcodeError(null);
+    // Remove postcode params from URL
+    updateParams({ pc: null, radius: null });
   };
 
   const tabCounts = useMemo(() => {
@@ -437,10 +517,10 @@ export function OperatorsSearchClient({ operators, currentRole }: OperatorsSearc
 
         <div className="flex flex-col sm:flex-row gap-2">
           <div className="relative flex-1">
-            <input
+          <input
               type="text"
-              value={postcodeInput}
-              onChange={(e) => setPostcodeInput(e.target.value)}
+              value={localPostcodeInput}
+              onChange={(e) => setLocalPostcodeInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handlePostcodeSearch()}
               placeholder="Enter site or client postcode (e.g. M2 3AE, SG12 8LG, SK1)"
               className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs text-slate-900 placeholder-slate-400 focus:border-slate-900 focus:bg-white focus:outline-none transition-colors"
@@ -459,7 +539,7 @@ export function OperatorsSearchClient({ operators, currentRole }: OperatorsSearc
           <button
             type="button"
             onClick={handlePostcodeSearch}
-            disabled={!postcodeInput.trim() || isSearchingPostcode}
+            disabled={!localPostcodeInput.trim() || isSearchingPostcode}
             className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 disabled:opacity-50 transition-colors whitespace-nowrap"
           >
             {isSearchingPostcode ? 'Searching...' : 'Search Radius'}

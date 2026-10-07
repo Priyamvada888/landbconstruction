@@ -77,7 +77,10 @@ export function JobDetailClient({
       try {
         await updateJobStatusAction(job.id, newStatus);
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : 'Failed to update status');
+        const msg = err instanceof Error && !err.message.includes('Minified React error')
+          ? err.message
+          : 'Failed to update job status. Please try again.';
+        setError(msg);
       }
     });
   };
@@ -89,7 +92,10 @@ export function JobDetailClient({
         await assignOperatorAction(job.id, operatorId, assignedRole, startDate);
         setSelectedOverrideId('');
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : 'Failed to assign operator');
+        const msg = err instanceof Error && !err.message.includes('Minified React error')
+          ? err.message
+          : 'Failed to assign operator. Please try again.';
+        setError(msg);
       }
     });
   };
@@ -101,7 +107,10 @@ export function JobDetailClient({
       try {
         await unassignOperatorAction(job.id, operatorId);
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : 'Failed to unassign operator');
+        const msg = err instanceof Error && !err.message.includes('Minified React error')
+          ? err.message
+          : 'Failed to unassign operator. Please try again.';
+        setError(msg);
       }
     });
   };

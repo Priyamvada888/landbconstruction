@@ -133,7 +133,13 @@ export function CreateOperatorModal({ currentRole }: CreateOperatorModalProps) {
         setSelectedTickets(['CSCS']);
         router.refresh();
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : 'Failed to register operator');
+        let msg = 'Failed to register operator';
+        if (err instanceof Error) {
+          msg = err.message.includes('Minified React error')
+            ? 'An error occurred while registering operator. Please try again.'
+            : err.message;
+        }
+        setError(msg);
       }
     });
   };

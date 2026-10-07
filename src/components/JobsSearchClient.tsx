@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useMemo, useCallback, useTransition } from 'react';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { Search, X } from 'lucide-react';
 import { Job, JobStatus } from '@/types/database';
@@ -21,8 +22,34 @@ interface JobsSearchClientProps {
 }
 
 export function JobsSearchClient({ jobs }: JobsSearchClientProps) {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('All');
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [, startTransition] = useTransition();
+
+  const searchTerm = searchParams.get('q') ?? '';
+  const statusFilter = searchParams.get('status') ?? 'All';
+
+  const updateParams = useCallback(
+    (updates: Record<string, string>) => {
+      const params = new URLSearchParams(searchParams.toString());
+      Object.entries(updates).forEach(([key, val]) => {
+        if (!val || val === '' || (key === 'status' && val === 'All')) {
+          params.delete(key);
+        } else {
+          params.set(key, val);
+        }
+      });
+      const qs = params.toString();
+      startTransition(() => {
+        router.replace(`${pathname}${qs ? `?${qs}` : ''}`, { scroll: false });
+      });
+    },
+    [router, pathname, searchParams]
+  );
+
+  const setSearchTerm = (val: string) => updateParams({ q: val });
+  const setStatusFilter = (val: string) => updateParams({ status: val });
 
   const filtered = useMemo(() => {
     const q = searchTerm.toLowerCase();

@@ -7,8 +7,22 @@ import { JobStatus, OperatorRole, AvailabilityStatus, TicketType, UserRole, Job,
 import { hashPassword, signJwt, verifyJwt, COOKIE_NAME } from './jwt';
 import { getSupabaseAdmin } from './supabase/admin';
 
+async function getEffectiveRole(): Promise<UserRole> {
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get(COOKIE_NAME)?.value;
+    if (token) {
+      const payload = verifyJwt(token);
+      if (payload?.role) return payload.role;
+    }
+  } catch {
+    // ignore
+  }
+  return DataStore.getSessionRole();
+}
+
 export async function checkAdminPermission() {
-  const role = DataStore.getSessionRole();
+  const role = await getEffectiveRole();
   if (role !== 'admin') {
     throw new Error('Access denied: Action requires Administrator privileges.');
   }
@@ -27,8 +41,10 @@ export async function createJobAction(formData: FormData) {
   const postcode = formData.get('postcode')?.toString().trim() || null;
   const start_date = formData.get('start_date')?.toString() || new Date().toISOString().split('T')[0];
   const end_date = formData.get('end_date')?.toString() || null;
-  const pay_rate = parseFloat(formData.get('pay_rate')?.toString() || '0');
-  const charge_rate = parseFloat(formData.get('charge_rate')?.toString() || '0');
+  const rawPay = parseFloat(formData.get('pay_rate')?.toString() || '0');
+  const pay_rate = Number.isNaN(rawPay) ? 0 : rawPay;
+  const rawCharge = parseFloat(formData.get('charge_rate')?.toString() || '0');
+  const charge_rate = Number.isNaN(rawCharge) ? 0 : rawCharge;
   const site_contact_name = formData.get('site_contact_name')?.toString().trim() || null;
   const site_contact_phone = formData.get('site_contact_phone')?.toString().trim() || null;
   const notes = formData.get('notes')?.toString().trim() || null;
@@ -143,8 +159,10 @@ export async function updateJobAction(id: string, formData: FormData) {
   const postcode = formData.get('postcode')?.toString().trim() || null;
   const start_date = formData.get('start_date')?.toString();
   const end_date = formData.get('end_date')?.toString() || null;
-  const pay_rate = parseFloat(formData.get('pay_rate')?.toString() || '0');
-  const charge_rate = parseFloat(formData.get('charge_rate')?.toString() || '0');
+  const rawPay = parseFloat(formData.get('pay_rate')?.toString() || '0');
+  const pay_rate = Number.isNaN(rawPay) ? 0 : rawPay;
+  const rawCharge = parseFloat(formData.get('charge_rate')?.toString() || '0');
+  const charge_rate = Number.isNaN(rawCharge) ? 0 : rawCharge;
   const site_contact_name = formData.get('site_contact_name')?.toString().trim() || null;
   const site_contact_phone = formData.get('site_contact_phone')?.toString().trim() || null;
   const notes = formData.get('notes')?.toString().trim() || null;
@@ -206,8 +224,9 @@ export async function updateJobAction(id: string, formData: FormData) {
 
   const supabase = getSupabaseAdmin();
   if (supabase) {
+    const { role_requirements: _rr, ...dbJobUpdates } = updates;
     const { error: dbErr } = await supabase.from('jobs').update({
-      ...updates,
+      ...dbJobUpdates,
       notes: notesForSupabase,
     }).eq('id', id);
     if (dbErr) console.error('Supabase job update error:', dbErr);
@@ -285,7 +304,7 @@ export async function unassignOperatorAction(jobId: string, operatorId: string) 
 }
 
 // Standard tickets matching the PostgreSQL ticket_type enum in Supabase
-export const SUPABASE_ENUM_TICKETS = new Set([
+const SUPABASE_ENUM_TICKETS = new Set([
   'Excavator 180',
   'Excavator 360',
   'ADT',
@@ -312,15 +331,19 @@ export async function createOperatorAction(formData: FormData) {
   const location = address; // keep in sync
   const ni_number = formData.get('ni_number')?.toString().trim() || null;
   const utr_number = formData.get('utr_number')?.toString().trim() || null;
-  const experience_years = parseInt(formData.get('experience_years')?.toString() || '0', 10);
+  const rawExp = parseInt(formData.get('experience_years')?.toString() || '0', 10);
+  const experience_years = Number.isNaN(rawExp) ? 0 : rawExp;
   const current_company = formData.get('current_company')?.toString().trim() || null;
   const availability_status = (formData.get('availability_status')?.toString() || 'Available') as AvailabilityStatus;
-  const hourly_rate = parseFloat(formData.get('hourly_rate')?.toString() || '0');
-  const daily_rate = parseFloat(formData.get('daily_rate')?.toString() || '0');
-  const tax_rate_percent = parseFloat(formData.get('tax_rate_percent')?.toString() || '20');
+  const rawHourly = parseFloat(formData.get('hourly_rate')?.toString() || '0');
+  const hourly_rate = Number.isNaN(rawHourly) ? 0 : rawHourly;
+  const rawDaily = parseFloat(formData.get('daily_rate')?.toString() || '0');
+  const daily_rate = Number.isNaN(rawDaily) ? 0 : rawDaily;
+  const rawTax = parseFloat(formData.get('tax_rate_percent')?.toString() || '20');
+  const tax_rate_percent = Number.isNaN(rawTax) ? 20 : rawTax;
 
   // Bank details (only admin can assign bank details)
-  const role = DataStore.getSessionRole();
+  const role = await getEffectiveRole();
   let bank_name = null;
   let bank_account_name = null;
   let bank_account_number = null;
@@ -450,11 +473,12 @@ export async function updateOperatorAction(id: string, formData: FormData) {
   const location = address;
   const ni_number = formData.get('ni_number')?.toString().trim() || null;
   const utr_number = formData.get('utr_number')?.toString().trim() || null;
-  const experience_years = parseInt(formData.get('experience_years')?.toString() || '0', 10);
+  const rawExp = parseInt(formData.get('experience_years')?.toString() || '0', 10);
+  const experience_years = Number.isNaN(rawExp) ? 0 : rawExp;
   const current_company = formData.get('current_company')?.toString().trim() || null;
   const availability_status = (formData.get('availability_status')?.toString() || 'Available') as AvailabilityStatus;
 
-  const role = DataStore.getSessionRole();
+  const role = await getEffectiveRole();
   const updates: Record<string, unknown> = {
     name,
     phone,
@@ -471,9 +495,18 @@ export async function updateOperatorAction(id: string, formData: FormData) {
 
   // Only admin can update rates and bank details
   if (role === 'admin') {
-    if (formData.has('hourly_rate')) updates.hourly_rate = parseFloat(formData.get('hourly_rate')!.toString());
-    if (formData.has('daily_rate')) updates.daily_rate = parseFloat(formData.get('daily_rate')!.toString());
-    if (formData.has('tax_rate_percent')) updates.tax_rate_percent = parseFloat(formData.get('tax_rate_percent')!.toString());
+    if (formData.has('hourly_rate')) {
+      const val = parseFloat(formData.get('hourly_rate')!.toString());
+      updates.hourly_rate = Number.isNaN(val) ? 0 : Math.max(0, val);
+    }
+    if (formData.has('daily_rate')) {
+      const val = parseFloat(formData.get('daily_rate')!.toString());
+      updates.daily_rate = Number.isNaN(val) ? 0 : Math.max(0, val);
+    }
+    if (formData.has('tax_rate_percent')) {
+      const val = parseFloat(formData.get('tax_rate_percent')!.toString());
+      updates.tax_rate_percent = Number.isNaN(val) ? 20 : Math.max(0, val);
+    }
     if (formData.has('bank_name')) updates.bank_name = formData.get('bank_name')?.toString().trim() || null;
     if (formData.has('bank_account_name')) updates.bank_account_name = formData.get('bank_account_name')?.toString().trim() || null;
     if (formData.has('bank_account_number')) updates.bank_account_number = formData.get('bank_account_number')?.toString().trim() || null;

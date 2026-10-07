@@ -118,7 +118,13 @@ export function EditJobModal({
         }
         router.refresh();
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : 'Failed to update job site');
+        let msg = 'Failed to update job site';
+        if (err instanceof Error) {
+          msg = err.message.includes('Minified React error')
+            ? 'An error occurred while saving the job. Please verify your inputs and try again.'
+            : err.message;
+        }
+        setError(msg);
       }
     });
   };

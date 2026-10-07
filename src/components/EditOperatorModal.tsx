@@ -122,7 +122,13 @@ export function EditOperatorModal({
         }
         router.refresh();
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : 'Failed to update operator');
+        let msg = 'Failed to update operator';
+        if (err instanceof Error) {
+          msg = err.message.includes('Minified React error')
+            ? 'An error occurred while saving operator. Please try again.'
+            : err.message;
+        }
+        setError(msg);
       }
     });
   };
